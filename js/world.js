@@ -104,12 +104,10 @@ export function createWorld(scene) {
   const addCollider = (x, z, w, d) =>
     world.colliders.push({ minX: x - w / 2, maxX: x + w / 2, minZ: z - d / 2, maxZ: z + d / 2 });
 
-  // ---------------- sky / fog / lights ----------------
-  scene.background = new THREE.Color(0x1a1f4d);
-  scene.fog = new THREE.Fog(0x1a1f4d, 70, 250);
-
-  scene.add(new THREE.HemisphereLight(0x6b7ad9, 0x3a3050, 1.25));
-  const moon = new THREE.DirectionalLight(0xbfd0ff, 1.1);
+  // ---------------- sky / fog / lights (day & night moods) ----------------
+  const hemi = new THREE.HemisphereLight(0x6b7ad9, 0x3a3050, 1.4);
+  scene.add(hemi);
+  const moon = new THREE.DirectionalLight(0xbfd0ff, 1.2);
   moon.position.set(-60, 90, -40);
   moon.castShadow = true;
   moon.shadow.mapSize.set(2048, 2048);
@@ -120,6 +118,40 @@ export function createWorld(scene) {
   const warm = new THREE.DirectionalLight(0xffb070, 0.35);
   warm.position.set(50, 40, 60);
   scene.add(warm);
+
+  scene.background = new THREE.Color();
+  scene.fog = new THREE.Fog(0x1a1f4d, 70, 250);
+  const nightOnly = [];     // stars, light beams… hidden in morning mode
+  const tintables = { roads: [], ground: null, walk: null };   // ground materials to re-tint
+
+  // 🌅 morning / 🌃 night — switchable any time
+  world.setMorning = (on) => {
+    if (on) {
+      scene.background.set(0x9ec9ee);
+      scene.fog.color.set(0xb9d4ea);
+      scene.fog.near = 95; scene.fog.far = 330;
+      hemi.color.set(0xcfe4ff); hemi.groundColor.set(0x9a9580); hemi.intensity = 2.2;
+      moon.color.set(0xfff3da); moon.intensity = 2.6;   // the sun!
+      moon.position.set(70, 110, 50);
+      warm.intensity = 0.12;
+      tintables.ground?.color.set(0x8e9388);
+      tintables.walk?.color.set(0xa9aeb6);
+      tintables.roads.forEach(m => m.color.setRGB(2.1, 2.1, 2.1));   // brighten road texture
+    } else {
+      scene.background.set(0x1a1f4d);
+      scene.fog.color.set(0x1a1f4d);
+      scene.fog.near = 70; scene.fog.far = 250;
+      hemi.color.set(0x6b7ad9); hemi.groundColor.set(0x3a3050); hemi.intensity = 1.4;
+      moon.color.set(0xbfd0ff); moon.intensity = 1.2;
+      moon.position.set(-60, 90, -40);
+      warm.intensity = 0.35;
+      tintables.ground?.color.set(0x3a3f52);
+      tintables.walk?.color.set(0x4d5266);
+      tintables.roads.forEach(m => m.color.setRGB(1, 1, 1));
+    }
+    nightOnly.forEach(o => { o.visible = !on; });
+    world.isMorning = on;
+  };
 
   // stars
   {
@@ -132,13 +164,16 @@ export function createWorld(scene) {
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    scene.add(new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 1.6, sizeAttenuation: false })));
+    const stars = new THREE.Points(geo, new THREE.PointsMaterial({ color: 0xffffff, size: 1.6, sizeAttenuation: false }));
+    scene.add(stars);
+    nightOnly.push(stars);
   }
 
   // ---------------- ground ----------------
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(280, 300),
     new THREE.MeshStandardMaterial({ color: 0x3a3f52, roughness: 1 }));
+  tintables.ground = ground.material;
   ground.rotation.x = -Math.PI / 2;
   ground.position.set(0, -0.02, 10);
   ground.receiveShadow = true;
@@ -150,6 +185,7 @@ export function createWorld(scene) {
     tex.repeat.set(Math.max(1, r.w / 14), Math.max(1, r.d / 14));
     const m = new THREE.Mesh(new THREE.PlaneGeometry(r.w, r.d),
       new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 }));
+    tintables.roads.push(m.material);
     m.rotation.x = -Math.PI / 2;
     m.position.set(r.x, 0.0, r.z);
     m.receiveShadow = true;
@@ -472,6 +508,7 @@ export function createWorld(scene) {
       }));
       beam.position.set(-110 + i * 55, 40 + (i % 3) * 12, 250);
       scene.add(beam);
+      nightOnly.push(beam);
       const phase = i * 1.3;
       world.updatables.push((dt, t) => {
         beam.rotation.z = Math.sin(t * 0.35 + phase) * 0.55;
@@ -584,20 +621,21 @@ export function createWorld(scene) {
     return bus;
   }
 
+  // vehicles are faster than the girl (walk speed 9) — dodge carefully!
   const routes = [
     // Nathan Road — the busy spine
-    { make: () => makeTaxi(),            vertical: true,  fixed: -4,  from: -100, to: 92,  speed: 9,   hitR: 2.3 },
-    { make: () => makeDoubleDecker(),    vertical: true,  fixed: 4,   from: 92,  to: -100, speed: 6.5, hitR: 3.4 },
-    { make: () => makeTaxi(),            vertical: true,  fixed: -4,  from: -100, to: 92,  speed: 7.2, hitR: 2.3, offset: 0.5 },
-    // Jordan Road — red minibus
-    { make: () => makeMinibus(0xc23a3a), vertical: false, fixed: -77, from: -90, to: 88,  speed: 8,   hitR: 2.6 },
+    { make: () => makeTaxi(),            vertical: true,  fixed: -4,  from: -100, to: 92,  speed: 16,   hitR: 2.3 },
+    { make: () => makeDoubleDecker(),    vertical: true,  fixed: 4,   from: 92,  to: -100, speed: 11.5, hitR: 3.4 },
+    { make: () => makeTaxi(),            vertical: true,  fixed: -4,  from: -100, to: 92,  speed: 13,   hitR: 2.3, offset: 0.5 },
+    // Jordan Road — red minibus (HK minibuses are famously quick)
+    { make: () => makeMinibus(0xc23a3a), vertical: false, fixed: -77, from: -90, to: 88,  speed: 15,   hitR: 2.6 },
     // Austin Road — taxi
-    { make: () => makeTaxi(),            vertical: false, fixed: -35, from: 88,  to: -90,  speed: 7.5, hitR: 2.3 },
+    { make: () => makeTaxi(),            vertical: false, fixed: -35, from: 88,  to: -90,  speed: 14,   hitR: 2.3 },
     // Salisbury Road — green minibus
-    { make: () => makeMinibus(0x3f9e5a), vertical: false, fixed: 101, from: -90, to: 88,  speed: 7,   hitR: 2.6 },
+    { make: () => makeMinibus(0x3f9e5a), vertical: false, fixed: 101, from: -90, to: 88,  speed: 14.5, hitR: 2.6 },
     // Canton Road — taxi + double-decker
-    { make: () => makeTaxi(),            vertical: true,  fixed: -60, from: -100, to: 90,  speed: 8,   hitR: 2.3 },
-    { make: () => makeDoubleDecker(),    vertical: true,  fixed: -63, from: 90,  to: -100, speed: 6,   hitR: 3.4 },
+    { make: () => makeTaxi(),            vertical: true,  fixed: -60, from: -100, to: 90,  speed: 14.5, hitR: 2.3 },
+    { make: () => makeDoubleDecker(),    vertical: true,  fixed: -63, from: 90,  to: -100, speed: 10.5, hitR: 3.4 },
   ];
   routes.forEach((r) => {
     const v = r.make();
@@ -653,6 +691,7 @@ export function createWorld(scene) {
 
   // ---------------- raised sidewalks flanking Nathan Road ----------------
   const walkM = new THREE.MeshStandardMaterial({ color: 0x4d5266, roughness: 1 });
+  tintables.walk = walkM;
   const nathanSegs = [[-106, -88], [-72.5, -45.5], [-30.5, 1.5], [14.5, 45.5], [58.5, 90]];
   for (const [z0, z1] of nathanSegs) {
     for (const side of [-1, 1]) {
@@ -663,6 +702,7 @@ export function createWorld(scene) {
     }
   }
 
+  world.setMorning(false);   // default mood; main.js applies the player's choice
   return world;
 }
 

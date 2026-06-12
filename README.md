@@ -10,13 +10,16 @@ and MTR stations — find all 16 treasure chests and climb the leaderboard!
 
 ## How to play
 
-1. Enter your name, pick a **difficulty**, and press **START**:
+1. Enter your name, pick a **difficulty** and a **time of day**, then press **START**:
    - 🟢 Easy (P1–P2) — 15s per question, ×1 score (default)
    - 🟡 Medium (P3–P4) — 12s per question, ×1.5 score
    - 🔴 Hard (P5–P6) — 10s per question, ×2 score
+   - 🌅 Morning (bright, default) or 🌃 Night (neon + Symphony of Lights) —
+     switchable in-game any time with the HUD button
 2. Find the **16 glowing treasure chests** at real TST landmarks (gold dots on the minimap).
 3. Each chest asks **3 multiple-choice questions** (Math / English / Chinese / General
-   knowledge) from a bank of **310+ hand-written questions** plus endless generated math.
+   knowledge) from a bank of **360 hand-written questions** (120 per difficulty,
+   calibrated to the HK curriculum) plus endless generated math.
 4. Fun along the way:
    - 💰 Coins (+10) and ⭐ golden stars (+25) all over the streets
    - 🎀 Mystery gifts — random +50/+100/+150 points or a speed boost
@@ -31,7 +34,8 @@ and MTR stations — find all 16 treasure chests and climb the leaderboard!
    (3+ correct in a row) earn growing bonuses; all 3 correct = perfect bonus; finish
    fast for a completion time bonus!
 6. Gentle background music plays in-game — toggle it with the 🔊 button.
-7. Your score is saved to a persistent **leaderboard** (stored in your browser).
+7. Scores are **auto-saved**: locally in your browser, and — when deployed on
+   Vercel with a Blob store — to a 🌍 **global leaderboard** shared by all players.
 
 ## Controls
 
@@ -55,11 +59,19 @@ npx serve .
 
 Then open http://localhost:8000
 
-## Deploy (Vercel / GitHub Pages / Netlify)
+## Deploy (Vercel)
 
-No build step needed — deploy the repository root as a static site.
-On **Vercel**: import the repo, set Framework Preset to **Other**, leave build
-command empty and output directory as the root. Done!
+No build step needed — the site is static, plus one serverless function for the
+global leaderboard:
+
+1. Import the repo on **Vercel** (Framework Preset: **Other**, no build command).
+2. In the project's **Storage** tab, create / connect a **Blob** store
+   (e.g. `dg-treasure-hunt-blob`) with env prefix `BLOB` — this injects
+   `BLOB_READ_WRITE_TOKEN`, which `api/leaderboard.js` uses.
+3. Deploy. Scores now auto-save to the shared global leaderboard.
+
+Without the Blob store (or when running locally) the game gracefully falls back
+to the browser-local leaderboard.
 
 ## Project structure
 
@@ -70,7 +82,8 @@ js/main.js          Game engine: loop, controls, camera, chests, pickups, quiz f
 js/character.js     Procedural 3D girl model in uniform + walk animation
 js/world.js         Jordan/TST street grid, buildings, neon, harbour, park, market
 js/landmarks.js     Real TST landmarks (Clock Tower, Peninsula, K11, Mosque, …)
-js/questions.js     310+ tiered questions (easy/medium/hard) + procedural math
-js/audio.js         WebAudio sound effects (no audio files needed)
-js/leaderboard.js   localStorage top-10 leaderboard
+js/questions.js     360 tiered questions (easy/medium/hard) + procedural math
+js/audio.js         WebAudio sound effects + background music (no audio files)
+js/leaderboard.js   global leaderboard client (+ localStorage fallback)
+api/leaderboard.js  Vercel serverless function — global board in Vercel Blob
 ```

@@ -11,7 +11,12 @@ await page.setViewport({ width: 1280, height: 800 });
 
 const errors = [];
 page.on('pageerror', e => errors.push('PAGEERROR: ' + e.message));
-page.on('console', m => { if (m.type() === 'error') errors.push('CONSOLE: ' + m.text()); });
+page.on('console', m => {
+  // /api/leaderboard 404s locally (it only exists when deployed on Vercel)
+  if (m.type() === 'error' && !m.location()?.url?.includes('/api/leaderboard')) {
+    errors.push('CONSOLE: ' + m.text());
+  }
+});
 
 await page.goto('http://localhost:8000', { waitUntil: 'networkidle0', timeout: 60000 });
 await new Promise(r => setTimeout(r, 3000));

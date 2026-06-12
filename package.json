@@ -7,6 +7,9 @@
     "start": "py -m http.server 8000",
     "test": "node smoke-test.mjs"
   },
+  "dependencies": {
+    "@vercel/blob": "^1.1.1"
+  },
   "devDependencies": {
     "puppeteer-core": "^24.0.0"
   }

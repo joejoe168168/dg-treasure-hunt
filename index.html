@@ -41,6 +41,11 @@
           <button class="diff-btn" data-diff="medium">🟡 中級<small>P3–P4 · 12s ×1.5</small></button>
           <button class="diff-btn" data-diff="hard">🔴 高級<small>P5–P6 · 10s ×2</small></button>
         </div>
+        <label>時間 Time of day</label>
+        <div id="time-row">
+          <button class="diff-btn time-btn selected" data-time="morning">🌅 早晨<small>Morning</small></button>
+          <button class="diff-btn time-btn" data-time="night">🌃 夜晚<small>Night</small></button>
+        </div>
         <button id="start-btn" class="big-btn" disabled>開始遊戲 START!</button>
       </div>
       <div class="start-leaderboard">
@@ -61,6 +66,7 @@
       <div class="hud-pill" id="hud-chests">寶箱 🎁 0 / 16</div>
       <div class="hud-pill small" id="hud-coins">💰 0 &nbsp;⭐ 0</div>
       <button class="hud-pill small" id="mute-btn" title="音樂開關 Music on/off">🔊 音樂</button>
+      <button class="hud-pill small" id="time-btn" title="日夜切換 Day / Night">🌃 夜晚</button>
     </div>
     <canvas id="minimap" width="180" height="180"></canvas>
     <div id="interact-prompt" class="hidden">

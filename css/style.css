@@ -135,6 +135,8 @@ html, body {
 #hud-name { border-color: var(--dg-pink); }
 button.hud-pill { pointer-events: auto; cursor: pointer; font-family: inherit; }
 button.hud-pill:active { transform: scale(.94); }
+#time-row { display: flex; gap: 8px; margin: 4px 0 10px; }
+#time-row .time-btn { flex: 1; }
 
 #minimap {
   position: absolute; top: 12px; right: 12px;

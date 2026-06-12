@@ -1,8 +1,12 @@
 // ============================================================
-// Persistent leaderboard via localStorage (top 10).
+// Leaderboard — global (Vercel Blob via /api/leaderboard) with
+// localStorage fallback for offline / local play.
+// Scores are auto-saved on victory; no button needed.
 // ============================================================
 const KEY = 'dg-treasure-hunt-leaderboard-v1';
+const API = '/api/leaderboard';
 
+// ---------------- local fallback ----------------
 export function loadBoard() {
   try {
     return JSON.parse(localStorage.getItem(KEY)) || [];
@@ -20,10 +24,46 @@ export function saveScore(name, score, timeSec) {
   return top;
 }
 
-export function renderBoard(listEl, highlightName = null) {
-  const board = loadBoard();
+// ---------------- global board (Vercel Blob) ----------------
+function withTimeout(promise, ms = 6000) {
+  return Promise.race([
+    promise,
+    new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms)),
+  ]);
+}
+
+/** Fetch the global board; resolves to an array, or null if unavailable. */
+export async function fetchRemoteBoard() {
+  try {
+    const res = await withTimeout(fetch(API, { cache: 'no-store' }));
+    if (!res.ok) return null;
+    const data = await res.json();
+    return Array.isArray(data) ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Auto-submit a score to the global board; resolves to the updated board or null. */
+export async function submitScore(name, score, timeSec, diff) {
+  try {
+    const res = await withTimeout(fetch(API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, score, timeSec, diff }),
+    }), 8000);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return Array.isArray(data) ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+// ---------------- rendering ----------------
+export function renderBoard(listEl, board, highlightName = null) {
   listEl.innerHTML = '';
-  if (board.length === 0) {
+  if (!board || board.length === 0) {
     const li = document.createElement('li');
     li.className = 'lb-empty';
     li.textContent = '— 暫無紀錄 No records yet —';
@@ -31,7 +71,7 @@ export function renderBoard(listEl, highlightName = null) {
     return;
   }
   const medals = ['🥇', '🥈', '🥉'];
-  board.forEach((entry, i) => {
+  board.slice(0, 10).forEach((entry, i) => {
     const li = document.createElement('li');
     const mins = Math.floor(entry.timeSec / 60), secs = entry.timeSec % 60;
     li.innerHTML =
@@ -47,7 +87,7 @@ export function renderBoard(listEl, highlightName = null) {
 }
 
 function escapeHtml(s) {
-  return s.replace(/[&<>"']/g, ch => ({
+  return String(s).replace(/[&<>"']/g, ch => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   }[ch]));
 }

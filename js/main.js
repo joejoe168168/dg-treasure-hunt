@@ -8,7 +8,9 @@ import {
 } from './world.js';
 import { pickQuestions, resetQuestionPool, CATEGORIES, DIFFICULTIES } from './questions.js';
 import { sfx, startBgm, toggleBgm } from './audio.js';
-import { saveScore, renderBoard } from './leaderboard.js';
+import {
+  saveScore, loadBoard, renderBoard, fetchRemoteBoard, submitScore,
+} from './leaderboard.js';
 
 // ---------------- DOM ----------------
 const $ = id => document.getElementById(id);
@@ -344,6 +346,7 @@ const state = {
   boostUntil: 0,
   hitInvulnUntil: 0,
   dizzyUntil: 0,
+  morning: true,
 };
 
 // ---------------- input ----------------
@@ -682,8 +685,16 @@ function showVictory() {
   state.score += timeBonus;
 
   const diff = DIFFICULTIES[state.difficulty];
-  saveScore(`${diff.emoji} ${state.playerName}`, state.score, elapsed);
-  renderBoard($('victory-lb-list'), `${diff.emoji} ${state.playerName}`);
+  const displayName = `${diff.emoji} ${state.playerName}`;
+  // auto-save: local immediately, then sync to the global board
+  saveScore(displayName, state.score, elapsed);
+  renderBoard($('victory-lb-list'), loadBoard(), displayName);
+  submitScore(displayName, state.score, elapsed, state.difficulty).then((remote) => {
+    if (remote) {
+      renderBoard($('victory-lb-list'), remote, displayName);
+      toast('🌍 分數已自動上載到全球排行榜！');
+    }
+  });
 
   $('victory-stats').innerHTML =
     `${state.playerName} 同學，做得好！(${diff.label})<br>` +
@@ -697,7 +708,10 @@ function showVictory() {
 $('replay-btn').addEventListener('click', () => location.reload());
 
 // ---------------- start flow ----------------
-renderBoard($('start-lb-list'));
+renderBoard($('start-lb-list'), loadBoard());
+fetchRemoteBoard().then((remote) => {
+  if (remote && remote.length) renderBoard($('start-lb-list'), remote);
+});
 nameInput.addEventListener('input', () => {
   startBtn.disabled = nameInput.value.trim().length === 0;
 });
@@ -705,14 +719,33 @@ nameInput.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !startBtn.disabled) startBtn.click();
   e.stopPropagation();
 });
-document.querySelectorAll('.diff-btn').forEach(btn => {
+document.querySelectorAll('#difficulty-row .diff-btn').forEach(btn => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('selected'));
+    document.querySelectorAll('#difficulty-row .diff-btn').forEach(b => b.classList.remove('selected'));
     btn.classList.add('selected');
     state.difficulty = btn.dataset.diff;
     sfx.click();
   });
 });
+// time-of-day choice — applies live so the player previews it behind the menu
+document.querySelectorAll('#time-row .time-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#time-row .time-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    setTimeMode(btn.dataset.time === 'morning');
+    sfx.click();
+  });
+});
+function setTimeMode(morning) {
+  state.morning = morning;
+  world.setMorning(morning);
+  $('time-btn').textContent = morning ? '🌅 早晨' : '🌃 夜晚';
+}
+$('time-btn').addEventListener('click', () => {
+  setTimeMode(!state.morning);
+  sfx.click();
+});
+setTimeMode(true);   // default: bright morning
 $('mute-btn').addEventListener('click', () => {
   const muted = toggleBgm();
   $('mute-btn').textContent = muted ? '🔇 音樂' : '🔊 音樂';

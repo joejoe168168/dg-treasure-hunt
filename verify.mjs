@@ -16,6 +16,14 @@ const browser = await puppeteer.launch({
   await pg.type('#player-name', 'X');
   await pg.click('#start-btn');
   await new Promise(r => setTimeout(r, 800));
+  // morning gameplay view
+  await pg.screenshot({ path: 'verify-morning.png' });
+  // toggle to night for comparison
+  await pg.click('#time-btn');
+  await new Promise(r => setTimeout(r, 400));
+  await pg.screenshot({ path: 'verify-night.png' });
+  await pg.click('#time-btn');
+  await new Promise(r => setTimeout(r, 300));
   await pg.evaluate(() => {
     const { girl, camera, state } = window.__dg;
     state.phase = 'paused-debug';
