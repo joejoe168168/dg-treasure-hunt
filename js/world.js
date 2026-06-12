@@ -861,6 +861,62 @@ export function createWorld(scene) {
     });
   }
 
+  // ---- seagulls wheeling over the promenade ----
+  {
+    const gullM = new THREE.MeshToonMaterial({ color: 0xf2f4f8 });
+    const gulls = [];
+    for (let i = 0; i < 5; i++) {
+      const g = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.16, 8, 6), gullM);
+      body.scale.set(1.6, 0.8, 1); g.add(body);
+      for (const s of [-1, 1]) {
+        const wing = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.02, 0.85), gullM);
+        wing.position.z = s * 0.5;
+        g.add(wing);
+        (s < 0 ? (g.userData.wl = wing) : (g.userData.wr = wing));
+      }
+      scene.add(g);
+      gulls.push({ g, r: 9 + i * 3.5, h: 9 + (i % 3) * 2.5, sp: 0.5 + (i % 2) * 0.22, ph: i * 1.3 });
+    }
+    world.updatables.push((dt, t) => {
+      for (const u of gulls) {
+        const a = t * u.sp + u.ph;
+        u.g.position.set(Math.cos(a) * u.r, u.h + Math.sin(t * 1.2 + u.ph) * 0.8, 132 + Math.sin(a) * u.r * 0.55);
+        u.g.rotation.y = -a + Math.PI / 2;
+        const flap = Math.sin(t * 7 + u.ph) * 0.55;
+        u.g.userData.wl.rotation.x = flap;
+        u.g.userData.wr.rotation.x = -flap;
+      }
+    });
+  }
+
+  // ---- red lanterns strung over Temple Street ----
+  {
+    const lanternM = new THREE.MeshBasicMaterial({ color: 0xff4636 });
+    const tasselM = new THREE.MeshBasicMaterial({ color: 0xffc94a });
+    const lanterns = [];
+    for (const lz of [-48, -64, -82, -100]) {
+      const line = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 9.4, 4),
+        new THREE.MeshBasicMaterial({ color: 0x77503a }));
+      line.rotation.z = Math.PI / 2;
+      line.position.set(-28, 7.6, lz);
+      scene.add(line);
+      for (let i = 0; i < 3; i++) {
+        const g = new THREE.Group();
+        const ball = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8), lanternM);
+        ball.scale.y = 0.82; g.add(ball);
+        const tas = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.02, 0.5, 5), tasselM);
+        tas.position.y = -0.55; g.add(tas);
+        g.position.set(-31 + i * 3, 7.0, lz);
+        scene.add(g);
+        lanterns.push({ g, ph: i * 2 + lz });
+      }
+    }
+    world.updatables.push((dt, t) => {
+      for (const { g, ph } of lanterns) g.rotation.z = Math.sin(t * 1.3 + ph) * 0.18;
+    });
+  }
+
   world.setMorning(false);   // default mood; main.js applies the player's choice
   return world;
 }

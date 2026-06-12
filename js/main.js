@@ -340,6 +340,55 @@ luckyCat.rotation.y = -Math.PI / 2.3;
 scene.add(luckyCat);
 let catRubbed = false;
 
+// ---------------- MTR fast-travel ----------------
+const MTR_STATIONS = [
+  { x: 12, z: -68, name: '佐敦 Jordan' },
+  { x: 12, z: 42, name: '尖沙咀 TST' },
+];
+const fadeEl = document.createElement('div');
+fadeEl.style.cssText =
+  'position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity .4s;z-index:40;';
+document.body.appendChild(fadeEl);
+let mtrBusy = false;
+function rideMtr() {
+  if (mtrBusy || state.nearMtr == null) return;
+  mtrBusy = true;
+  const dest = MTR_STATIONS[1 - state.nearMtr];
+  sfx.whoosh();
+  fadeEl.style.opacity = '1';
+  setTimeout(() => {
+    girl.position.set(dest.x - 7, 0, dest.z);
+    camera.position.copy(girl.position).add(CAM_OFFSET);
+    fadeEl.style.opacity = '0';
+    toast(`🚇 ${dest.name}站到喇！小心月台空隙 Mind the gap!`, 3200);
+    mtrBusy = false;
+  }, 450);
+}
+
+// ---------------- hidden Golden Bauhinia 金紫荊 ----------------
+const bauhinia = new THREE.Group();
+{
+  const gold = new THREE.MeshStandardMaterial({
+    color: 0xffc83c, emissive: 0xa87410, metalness: 0.7, roughness: 0.3,
+  });
+  const core = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), gold);
+  core.position.y = 1.1; bauhinia.add(core);
+  for (let i = 0; i < 5; i++) {                 // five petals
+    const petal = new THREE.Mesh(new THREE.SphereGeometry(0.3, 8, 6), gold);
+    petal.scale.set(1, 0.28, 0.55);
+    const a = i / 5 * Math.PI * 2;
+    petal.position.set(Math.cos(a) * 0.38, 1.18, Math.sin(a) * 0.38);
+    petal.rotation.y = -a;
+    petal.rotation.z = 0.5;
+    bauhinia.add(petal);
+  }
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 1.0, 6), gold);
+  stem.position.y = 0.5; bauhinia.add(stem);
+  bauhinia.position.set(-52, 0, -103);          // shhh… hidden behind the temple
+  scene.add(bauhinia);
+}
+let bauhiniaFound = false;
+
 // ---------------- pigeon flocks that scatter ----------------
 function makePigeon() {
   const p = new THREE.Group();
@@ -476,6 +525,7 @@ const state = {
   startTime: 0,
   nearChest: null,
   nearCat: null,
+  nearMtr: null,
   nearNpc: null,
   nearDog: false,
   boostUntil: 0,
@@ -497,6 +547,7 @@ function doInteract() {
   else if (state.nearNpc) talkToNpc(state.nearNpc);
   else if (state.nearDog && !dogFollowing) adoptDog();
   else if (state.nearCat) rubLuckyCat();
+  else if (state.nearMtr != null) rideMtr();
 }
 
 function rubLuckyCat() {
@@ -1118,18 +1169,29 @@ function loop() {
       Math.hypot(dog.position.x - girl.position.x, dog.position.z - girl.position.z) < 2.4;
     const nearCat = !nearChest && !nearNpc && !nearDog && !catRubbed &&
       Math.hypot(luckyCat.position.x - girl.position.x, luckyCat.position.z - girl.position.z) < 2.6;
+    let nearMtr = null;
+    if (!nearChest && !nearNpc && !nearDog && !nearCat && !mtrBusy) {
+      for (let i = 0; i < MTR_STATIONS.length; i++) {
+        const s = MTR_STATIONS[i];
+        if (Math.hypot(s.x - girl.position.x, s.z - girl.position.z) < 6) { nearMtr = i; break; }
+      }
+    }
     if (nearChest !== state.nearChest || nearNpc !== state.nearNpc ||
-        nearDog !== state.nearDog || nearCat !== state.nearCat) {
+        nearDog !== state.nearDog || nearCat !== state.nearCat || nearMtr !== state.nearMtr) {
       state.nearChest = nearChest;
       state.nearNpc = nearNpc;
       state.nearDog = nearDog;
       state.nearCat = nearCat;
+      state.nearMtr = nearMtr;
       if (nearChest) setPrompt('<span class="key-cap">E</span> 開寶箱 Open Chest!');
       else if (nearNpc) setPrompt('<span class="key-cap">E</span> 同同學傾偈 Talk!');
       else if (nearDog) setPrompt('<span class="key-cap">E</span> 摸吓小狗 Pet the puppy!');
       else if (nearCat) setPrompt('<span class="key-cap">E</span> 摸吓招財貓 Lucky cat!');
+      else if (nearMtr != null)
+        setPrompt(`<span class="key-cap">E</span> 搭地鐵去${MTR_STATIONS[1 - nearMtr].name} Ride the MTR!`);
       else setPrompt(null);
-      actionBtn.textContent = nearChest ? '🎁' : nearDog ? '🐶' : nearCat ? '🐱' : '💬';
+      actionBtn.textContent =
+        nearChest ? '🎁' : nearDog ? '🐶' : nearCat ? '🐱' : nearMtr != null ? '🚇' : '💬';
     }
   }
 
@@ -1160,11 +1222,25 @@ function loop() {
     }
   }
 
-  // lucky cat waves; pigeons peck / scatter
+  // lucky cat waves; pigeons peck / scatter; golden bauhinia twinkles
   {
     const fast = performance.now() < (state.catWaveFast || 0);
     luckyCat.userData.arm.rotation.x = -0.6 + Math.sin(t * (fast ? 16 : 2.4)) * 0.5;
     if (state.phase === 'play' || state.phase === 'quiz') updatePigeons(dt, t);
+    if (!bauhiniaFound) {
+      bauhinia.rotation.y = t * 1.2;
+      bauhinia.position.y = Math.sin(t * 2) * 0.12;
+      if (state.phase === 'play' &&
+          Math.hypot(bauhinia.position.x - girl.position.x, bauhinia.position.z - girl.position.z) < 1.8) {
+        bauhiniaFound = true;
+        bauhinia.visible = false;
+        state.score += 200;
+        sfx.firework();
+        sparkleBurst(bauhinia.position.clone().add(new THREE.Vector3(0, 1.2, 0)), 0xffc83c);
+        toast('💛 嘩！你搵到隱藏嘅金紫荊！(+200 分)', 4500);
+        updateHUD();
+      }
+    }
   }
 
   animateGirl(girl, dt, speedFactor * (boosted ? 1.25 : 1));

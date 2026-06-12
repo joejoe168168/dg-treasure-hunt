@@ -62,6 +62,10 @@ export const sfx = {
     tone(520, 0.07, 'square', 0.12, 0, 320);
     tone(560, 0.08, 'square', 0.12, 0.12, 340);
   },
+  whoosh() {
+    tone(160, 0.5, 'sawtooth', 0.07, 0, 950);
+    tone(880, 0.45, 'sine', 0.06, 0.25, 180);
+  },
   firework() {
     tone(300, 0.5, 'sine', 0.1, 0, 1200);                       // whistle up
     [880, 1175, 988, 1319].forEach((f, i) => tone(f, 0.3, 'triangle', 0.12, 0.5 + i * 0.06));

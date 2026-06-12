@@ -29,11 +29,16 @@ and MTR stations — find all 16 treasure chests and climb the leaderboard!
    - 🐱 A **lucky cat (招財貓)** waves on the Nathan Road pavement — rub it once per
      game for a surprise bonus (up to +88!)
    - 🕊️ **Pigeon flocks** peck around the streets and scatter into the air as you run up
+   - 🚇 **Ride the MTR!** Walk up to the Jordan or TST station entrance and press `E`
+     to fast-travel to the other station
+   - 💛 A hidden **Golden Bauhinia** is tucked away somewhere on the map — find it
+     for a secret +200 bonus!
    - 🚖 **Dodge the traffic!** Taxis, red double-deckers and HK minibuses cruise the
      roads — get hit and you lose 10 points, so use the zebra crossings!
    - 🎆 Answer all 3 correctly and **fireworks** light up the sky
    - 🌃 Watch the **Symphony of Lights** beams sweeping over Victoria Harbour
    - 🚁 A sightseeing **helicopter** circles the harbour with a blinking beacon
+   - 🕊️ **Seagulls** wheel over the promenade; 🏮 **red lanterns** sway above Temple St
    - 🏮 Street life everywhere: working **pedestrian crossing lights** (flashing green
      man!), **bamboo scaffolding** with a safety net, **laundry swaying** over Temple
      Street, incense smoke at the **Tin Hau Temple**…
