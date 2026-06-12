@@ -8,7 +8,11 @@
 import { put, list } from '@vercel/blob';
 
 const PATHNAME = 'leaderboard.json';
-const TOKEN = process.env.BLOB_READ_WRITE_TOKEN;
+// accept any of the prefixes Vercel may have used when connecting the store
+const TOKEN =
+  process.env.BLOB_READ_WRITE_TOKEN ||
+  process.env.BLOB2_READ_WRITE_TOKEN ||
+  Object.entries(process.env).find(([k]) => k.endsWith('_READ_WRITE_TOKEN'))?.[1];
 const MAX_ENTRIES = 50;
 
 async function readBoard() {
