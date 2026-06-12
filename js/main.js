@@ -742,10 +742,13 @@ function toast(msg, ms = 2400) {
 
 // ---------------- minimap ----------------
 const mm = $('minimap'), mmCtx = mm.getContext('2d');
+// The camera looks toward +z (the harbour), so on screen "up" is +z and
+// "right" is -x. Flip both axes (a 180° rotation) so the minimap matches
+// what the player sees: walk up → dot moves up.
 function mapToMM(x, z) {
   return [
-    (x - MAP.minX) / (MAP.maxX - MAP.minX) * mm.width,
-    (z - MAP.minZ) / (MAP.maxZ - MAP.minZ) * mm.height,
+    (MAP.maxX - x) / (MAP.maxX - MAP.minX) * mm.width,
+    (MAP.maxZ - z) / (MAP.maxZ - MAP.minZ) * mm.height,
   ];
 }
 function drawMinimap() {
@@ -754,7 +757,7 @@ function drawMinimap() {
   mmCtx.fillRect(0, 0, mm.width, mm.height);
   mmCtx.fillStyle = '#16335e';
   const [, wy] = mapToMM(0, 124);
-  mmCtx.fillRect(0, wy, mm.width, mm.height - wy);
+  mmCtx.fillRect(0, 0, mm.width, wy);   // harbour is now at the top
   mmCtx.strokeStyle = '#4a5170';
   for (const r of ROADS) {
     mmCtx.lineWidth = Math.max(2, (r.vertical ? r.w : r.d) / 5);
@@ -1366,4 +1369,4 @@ function loop() {
 loop();
 
 // debug hook for automated testing
-window.__dg = { girl, chests, state, openChest, camera };
+window.__dg = { girl, chests, state, openChest, camera, world };

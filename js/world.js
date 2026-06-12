@@ -1024,17 +1024,17 @@ export const CHEST_SPOTS = [
   { x: -48, z: 108, hint: '文化中心 Cultural Centre' },
   { x: -20, z: 106, hint: '太空館 Space Museum' },
   { x: -24, z: 93,  hint: '半島酒店 The Peninsula' },
-  { x: -48, z: 93,  hint: '1881 Heritage' },
+  { x: -60, z: 93,  hint: '1881 Heritage' },   // open corner plaza — visible from the camera
   { x: -20, z: 24,  hint: 'iSQUARE 國際廣場' },
   { x: 19,  z: 60,  hint: '重慶大廈 Chungking Mansions' },
   { x: 42,  z: 98,  hint: 'K11 MUSEA' },
-  { x: 30,  z: 125, hint: '星光大道 Avenue of Stars' },
+  { x: 24,  z: 122, hint: '星光大道 Avenue of Stars' },   // open promenade, clear of K11's collider
   { x: -66, z: 40,  hint: '海港城 Harbour City' },
   { x: -33, z: -20, hint: '九龍公園 Kowloon Park' },
   { x: -18, z: 8,   hint: '九龍清真寺 Kowloon Mosque' },
-  { x: 16,  z: -6,  hint: '聖安德烈堂 St Andrew\u2019s Church' },
+  { x: 22,  z: -6,  hint: '聖安德烈堂 St Andrew\u2019s Church' },   // clear of the steeple
   { x: -28, z: -60, hint: '廟街夜市 Temple St Night Market' },
-  { x: 12,  z: -62, hint: '佐敦站 Jordan MTR' },
+  { x: 18.5, z: -68, hint: '佐敦站 Jordan MTR' },   // beside the entrance, not behind its canopy
 ];
 
 // fun collectibles & friends — positions on streets / open areas
