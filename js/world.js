@@ -917,6 +917,100 @@ export function createWorld(scene) {
     });
   }
 
+  // ---- HK Observation Wheel on the island shore ----
+  {
+    const wheel = new THREE.Group();
+    const rimM = new THREE.MeshBasicMaterial({ color: 0x9fd7ff });
+    const R = 13;
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(R, 0.3, 8, 36), rimM);
+    wheel.add(rim);
+    for (let i = 0; i < 8; i++) {              // spokes
+      const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, R * 2, 4), rimM);
+      sp.rotation.z = i / 8 * Math.PI;
+      wheel.add(sp);
+    }
+    const podColors = [0xff8fb6, 0xffd35c, 0x7dffb2, 0x7db8ff];
+    const pods = [];
+    const hub = new THREE.Group();
+    hub.add(wheel);
+    for (let i = 0; i < 12; i++) {
+      const pod = new THREE.Mesh(new THREE.SphereGeometry(0.85, 8, 6),
+        new THREE.MeshBasicMaterial({ color: podColors[i % 4] }));
+      hub.add(pod);                            // in the hub, not the spinning wheel
+      pods.push({ pod, a: i / 12 * Math.PI * 2 });
+    }
+    for (const s of [-1, 1]) {                 // A-frame legs
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.5, R + 3, 6),
+        new THREE.MeshToonMaterial({ color: 0xdde3ee }));
+      leg.rotation.x = s * 0.35;
+      leg.position.set(0, -(R + 3) / 2, s * 2.6);
+      hub.add(leg);
+    }
+    hub.position.set(28, R + 2, 248);          // by the island skyline
+    scene.add(hub);
+    world.updatables.push((dt, t) => {
+      wheel.rotation.z = t * 0.12;             // wheel plane faces Kowloon
+      for (const { pod, a } of pods) {         // pods hang level as the wheel turns
+        const ang = a + t * 0.12;
+        pod.position.set(Math.sin(ang) * R, Math.cos(ang) * R - 0.9, 0);
+      }
+    });
+  }
+
+  // ---- dragon dance parading up and down Nathan Road ----
+  {
+    const segs = [];
+    const SEGN = 11;
+    for (let i = 0; i < SEGN; i++) {
+      let m;
+      if (i === 0) {                           // the head
+        m = new THREE.Group();
+        const skull = new THREE.Mesh(new THREE.SphereGeometry(0.62, 10, 8),
+          new THREE.MeshToonMaterial({ color: 0xd92b2b }));
+        skull.scale.set(1.25, 1, 1); m.add(skull);
+        for (const s of [-1, 1]) {
+          const eye = new THREE.Mesh(new THREE.SphereGeometry(0.13, 6, 6),
+            new THREE.MeshBasicMaterial({ color: 0xffe26a }));
+          eye.position.set(0.3, 0.3, s * 0.32); m.add(eye);
+          const horn = new THREE.Mesh(new THREE.ConeGeometry(0.1, 0.55, 5),
+            new THREE.MeshToonMaterial({ color: 0xffd35c }));
+          horn.position.set(-0.25, 0.62, s * 0.25);
+          horn.rotation.z = -0.5; m.add(horn);
+        }
+      } else {
+        m = new THREE.Mesh(new THREE.SphereGeometry(0.5 - i * 0.018, 8, 6),
+          new THREE.MeshToonMaterial({ color: i % 2 ? 0xffd35c : 0xd92b2b }));
+      }
+      m.castShadow = false;
+      scene.add(m);
+      segs.push(m);
+    }
+    const head = segs[0];
+    world.dragonHead = head;
+    world.updatables.push((dt, t) => {
+      // head snakes along the west pavement of Nathan Rd
+      const s = t * 4.5;
+      const zz = -40 + (s % 150);
+      const dir = Math.floor(s / 150) % 2 ? -1 : 1;
+      const hz = dir > 0 ? zz : 110 - (s % 150);
+      const hx = -12 + Math.sin(t * 1.7) * 2.2;
+      head.position.set(hx, 1.5 + Math.sin(t * 5) * 0.45, hz);
+      head.rotation.y = Math.atan2(Math.cos(t * 1.7) * 2.2, dir * 4.5);
+      for (let i = 1; i < SEGN; i++) {        // each segment trails the one before
+        const prev = segs[i - 1].position, cur = segs[i].position;
+        if (cur.lengthSq() === 0) cur.copy(prev);
+        const dx = prev.x - cur.x, dy = prev.y - cur.y, dz = prev.z - cur.z;
+        const d = Math.hypot(dx, dy, dz) || 1;
+        const keep = 1.05;
+        if (d > keep) {
+          const f = (d - keep) / d;
+          cur.x += dx * f; cur.y += dy * f; cur.z += dz * f;
+        }
+        segs[i].position.y = Math.max(0.5, cur.y);
+      }
+    });
+  }
+
   world.setMorning(false);   // default mood; main.js applies the player's choice
   return world;
 }

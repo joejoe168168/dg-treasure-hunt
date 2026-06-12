@@ -389,6 +389,99 @@ const bauhinia = new THREE.Group();
 }
 let bauhiniaFound = false;
 
+// ---------------- dragon dance luck bonus ----------------
+let dragonLuckAt = 0;   // cooldown timestamp
+
+// ---------------- red packet rain 利是雨 ----------------
+const redPackets = [];
+let nextPacketRain = 0;
+function makeRedPacket() {
+  const g = new THREE.Group();
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.72, 0.06),
+    new THREE.MeshToonMaterial({ color: 0xd92b2b }));
+  g.add(body);
+  const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.08),
+    new THREE.MeshToonMaterial({ color: 0xffd35c }));
+  g.add(stripe);
+  return g;
+}
+function startPacketRain() {
+  sfx.chestFound();
+  toast('🧧 利是雨呀！快啲執！(每封 +20 分)', 3500);
+  for (let i = 0; i < 6; i++) {
+    const p = makeRedPacket();
+    const a = Math.random() * Math.PI * 2, r = 3 + Math.random() * 9;
+    let px = girl.position.x + Math.cos(a) * r;
+    let pz = girl.position.z + Math.sin(a) * r;
+    px = Math.max(MAP.minX + 2, Math.min(MAP.maxX - 2, px));
+    pz = Math.max(MAP.minZ + 2, Math.min(MAP.maxZ - 2, pz));
+    p.position.set(px, 9 + Math.random() * 4, pz);
+    p.rotation.y = Math.random() * Math.PI;
+    scene.add(p);
+    redPackets.push({ m: p, expire: performance.now() + 14000 });
+  }
+}
+function updateRedPackets(dt, t) {
+  const now = performance.now();
+  if (state.phase === 'play' && now > nextPacketRain) {
+    nextPacketRain = now + 80000 + Math.random() * 30000;
+    if (now > 15000) startPacketRain();      // not in the very first seconds
+  }
+  for (let i = redPackets.length - 1; i >= 0; i--) {
+    const rp = redPackets[i];
+    if (rp.m.position.y > 0.5) rp.m.position.y -= dt * 3.2;   // flutter down
+    rp.m.rotation.y += dt * 2.5;
+    const gone = now > rp.expire;
+    const grabbed = !gone && state.phase === 'play' &&
+      Math.hypot(rp.m.position.x - girl.position.x, rp.m.position.z - girl.position.z) < 1.3 &&
+      rp.m.position.y < 2.2;
+    if (grabbed) {
+      state.score += 20;
+      sfx.coin();
+      sparkleBurst(rp.m.position, 0xd92b2b);
+      updateHUD();
+    }
+    if (gone || grabbed) {
+      scene.remove(rp.m);
+      redPackets.splice(i, 1);
+    }
+  }
+}
+
+// ---------------- photo spots 影相位 ----------------
+const PHOTO_SPOTS = [
+  { x: -62, z: 122, name: '鐘樓 Clock Tower' },
+  { x: 56, z: 124, name: '星光大道 Avenue of Stars' },
+];
+const photoTaken = new Set();
+const flashEl = document.createElement('div');
+flashEl.style.cssText =
+  'position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .12s;z-index:41;';
+document.body.appendChild(flashEl);
+for (const ps of PHOTO_SPOTS) {              // glowing camera marker on the ground
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.8, 1.15, 24),
+    new THREE.MeshBasicMaterial({ color: 0x7df0ff, side: THREE.DoubleSide, transparent: true, opacity: 0.75 }));
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.set(ps.x, 0.06, ps.z);
+  scene.add(ring);
+  ps.ring = ring;
+}
+function checkPhotoSpots() {
+  for (const ps of PHOTO_SPOTS) {
+    if (photoTaken.has(ps.name)) continue;
+    if (Math.hypot(ps.x - girl.position.x, ps.z - girl.position.z) < 1.4) {
+      photoTaken.add(ps.name);
+      ps.ring.visible = false;
+      state.score += 25;
+      sfx.click(); sfx.correct();
+      flashEl.style.opacity = '0.9';
+      setTimeout(() => { flashEl.style.opacity = '0'; }, 130);
+      toast(`📸 喺${ps.name}影咗張靚相！(+25 分)`, 3500);
+      updateHUD();
+    }
+  }
+}
+
 // ---------------- pigeon flocks that scatter ----------------
 function makePigeon() {
   const p = new THREE.Group();
@@ -1227,6 +1320,21 @@ function loop() {
     const fast = performance.now() < (state.catWaveFast || 0);
     luckyCat.userData.arm.rotation.x = -0.6 + Math.sin(t * (fast ? 16 : 2.4)) * 0.5;
     if (state.phase === 'play' || state.phase === 'quiz') updatePigeons(dt, t);
+    updateRedPackets(dt, t);
+    if (state.phase === 'play') {
+      checkPhotoSpots();
+      // brush past the dragon dance for a luck bonus (once a minute)
+      const dh = world.dragonHead;
+      if (dh && performance.now() > dragonLuckAt &&
+          Math.hypot(dh.position.x - girl.position.x, dh.position.z - girl.position.z) < 2.6) {
+        dragonLuckAt = performance.now() + 60000;
+        state.score += 30;
+        sfx.chestFound();
+        sparkleBurst(dh.position, 0xd92b2b);
+        toast('🐉 舞龍隊俾咗你好運！(+30 分)', 3500);
+        updateHUD();
+      }
+    }
     if (!bauhiniaFound) {
       bauhinia.rotation.y = t * 1.2;
       bauhinia.position.y = Math.sin(t * 2) * 0.12;

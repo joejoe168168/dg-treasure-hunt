@@ -33,6 +33,13 @@ and MTR stations — find all 16 treasure chests and climb the leaderboard!
      to fast-travel to the other station
    - 💛 A hidden **Golden Bauhinia** is tucked away somewhere on the map — find it
      for a secret +200 bonus!
+   - 🧧 **Red packet rain!** Every minute or two, lucky red packets flutter down
+     around you — grab them quick for +20 each
+   - 🐉 A **dragon dance** parades up and down Nathan Road — brush past it for a
+     +30 luck bonus (once a minute)
+   - 📸 **Photo spots** at the Clock Tower and Avenue of Stars — stand on the glowing
+     ring for a camera flash and +25
+   - 🎡 The **Observation Wheel** turns on the far shore beside the island skyline
    - 🚖 **Dodge the traffic!** Taxis, red double-deckers and HK minibuses cruise the
      roads — get hit and you lose 10 points, so use the zebra crossings!
    - 🎆 Answer all 3 correctly and **fireworks** light up the sky
