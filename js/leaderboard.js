@@ -18,8 +18,17 @@ export function loadBoard() {
 export function saveScore(name, score, timeSec) {
   const board = loadBoard();
   board.push({ name, score, timeSec, date: new Date().toISOString().slice(0, 10) });
-  board.sort((a, b) => b.score - a.score || a.timeSec - b.timeSec);
-  const top = board.slice(0, 10);
+  // one entry per player — keep the best run
+  const best = new Map();
+  for (const e of board) {
+    const k = String(e.name).toLowerCase();
+    const cur = best.get(k);
+    if (!cur || e.score > cur.score ||
+        (e.score === cur.score && e.timeSec < cur.timeSec)) best.set(k, e);
+  }
+  const top = [...best.values()]
+    .sort((a, b) => b.score - a.score || a.timeSec - b.timeSec)
+    .slice(0, 10);
   localStorage.setItem(KEY, JSON.stringify(top));
   return top;
 }

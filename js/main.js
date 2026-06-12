@@ -664,9 +664,26 @@ function finishChestQuiz() {
   updateHUD();
 }
 
+// auto-save progress after every chest — local + global (best run kept)
+let autosaveNotified = false;
+function autoSaveProgress() {
+  if (!state.playerName) return;
+  const elapsed = Math.round((performance.now() - state.startTime) / 1000);
+  const diff = DIFFICULTIES[state.difficulty];
+  const displayName = `${diff.emoji} ${state.playerName}`;
+  saveScore(displayName, state.score, elapsed);
+  submitScore(displayName, state.score, elapsed, state.difficulty).then((remote) => {
+    if (remote && !autosaveNotified) {
+      autosaveNotified = true;
+      toast('💾 分數會自動儲存到 🌍 全球排行榜！');
+    }
+  });
+}
+
 $('chest-continue-btn').addEventListener('click', () => {
   sfx.click();
   chestResult.classList.add('hidden');
+  autoSaveProgress();
   if (state.chestsOpened >= TOTAL_CHESTS) showVictory();
   else {
     state.phase = 'play';

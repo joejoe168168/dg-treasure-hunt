@@ -66,8 +66,18 @@ export default async function handler(req, res) {
 
       const board = await readBoard();
       board.push(entry);
-      board.sort((a, b) => b.score - a.score || a.timeSec - b.timeSec);
-      const top = board.slice(0, MAX_ENTRIES);
+      // keep only each player's best run, so progress auto-saves
+      // mid-game never flood the board with duplicates
+      const best = new Map();
+      for (const e of board) {
+        const k = e.name.toLowerCase();
+        const cur = best.get(k);
+        if (!cur || e.score > cur.score ||
+            (e.score === cur.score && e.timeSec < cur.timeSec)) best.set(k, e);
+      }
+      const top = [...best.values()]
+        .sort((a, b) => b.score - a.score || a.timeSec - b.timeSec)
+        .slice(0, MAX_ENTRIES);
       await writeBoard(top);
       return res.status(200).json(top);
     }
