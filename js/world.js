@@ -704,6 +704,163 @@ export function createWorld(scene) {
     }
   }
 
+  // ================== HK street-life props ==================
+
+  // ---- pedestrian crossing lights (red/green man, synchronised) ----
+  {
+    const poleM = new THREE.MeshToonMaterial({ color: 0x3c4150 });
+    const redM = new THREE.MeshBasicMaterial({ color: 0xff3b30 });
+    const grnM = new THREE.MeshBasicMaterial({ color: 0x144528 });
+    const spots = [[8.6, -89.5], [-8.6, -70.5], [8.6, 0], [-8.6, 16], [8.6, 60], [-8.6, 88.5]];
+    for (const [px, pz] of spots) {
+      const g = new THREE.Group();
+      const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.11, 2.6, 8), poleM);
+      pole.position.y = 1.3; g.add(pole);
+      const box = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.85, 0.3), poleM);
+      box.position.y = 2.95; g.add(box);
+      const red = new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.24), redM);
+      red.position.set(0, 3.16, 0.16);
+      const grn = new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.24), grnM);
+      grn.position.set(0, 2.78, 0.16);
+      g.add(red, grn);
+      g.rotation.y = px > 0 ? -Math.PI / 2 : Math.PI / 2;
+      g.position.set(px, 0, pz);
+      scene.add(g);
+    }
+    world.updatables.push((dt, t) => {
+      const phase = t % 14;
+      const green = phase > 7;
+      const flash = green && phase > 12 && Math.sin(t * 18) > 0;
+      grnM.color.set(green && !flash ? 0x35e06a : 0x144528);
+      redM.color.set(green ? 0x4a1410 : 0xff3b30);
+    });
+  }
+
+  // ---- bamboo scaffolding on a building "under renovation" ----
+  {
+    const g = new THREE.Group();
+    const bld = new THREE.Mesh(new THREE.BoxGeometry(8, 15, 8),
+      new THREE.MeshStandardMaterial({ color: 0x6e6a72, roughness: 1 }));
+    bld.position.y = 7.5; bld.castShadow = true; g.add(bld);
+    const bambooM = new THREE.MeshToonMaterial({ color: 0xd6b878 });
+    for (let i = 0; i <= 5; i++) {            // verticals on two faces
+      for (const face of [[i * 1.9 - 4.75, 4.85], [4.85, i * 1.9 - 4.75]]) {
+        const v = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 15.6, 5), bambooM);
+        v.position.set(face[0], 7.8, face[1]);
+        g.add(v);
+      }
+    }
+    for (let j = 0; j <= 6; j++) {            // horizontals
+      const h1 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 10, 5), bambooM);
+      h1.rotation.z = Math.PI / 2;
+      h1.position.set(0, 1 + j * 2.4, 4.85);
+      const h2 = h1.clone();
+      h2.rotation.set(Math.PI / 2, 0, 0);
+      h2.position.set(4.85, 1 + j * 2.4, 0);
+      g.add(h1, h2);
+    }
+    const net = new THREE.Mesh(new THREE.PlaneGeometry(10, 15.6),
+      new THREE.MeshBasicMaterial({ color: 0x2a6e4a, transparent: true, opacity: 0.32, side: THREE.DoubleSide }));
+    net.position.set(0, 7.8, 5.05); g.add(net);
+    const net2 = net.clone();
+    net2.rotation.y = Math.PI / 2;
+    net2.position.set(5.05, 7.8, 0); g.add(net2);
+    g.position.set(24, 0, -56);
+    scene.add(g);
+    addCollider(24, -56, 10.6, 10.6);
+  }
+
+  // ---- hanging laundry across Temple Street ----
+  {
+    const clothColors = [0xff8fb6, 0x7db8ff, 0xfff2b0, 0x9be89b, 0xe8e8e8];
+    const cloths = [];
+    for (const lz of [-56, -74, -92]) {
+      const line = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 9.4, 4),
+        new THREE.MeshBasicMaterial({ color: 0x999999 }));
+      line.rotation.z = Math.PI / 2;
+      line.position.set(-28, 6.8, lz);
+      scene.add(line);
+      for (let i = 0; i < 4; i++) {
+        const c = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 1.5),
+          new THREE.MeshToonMaterial({ color: clothColors[(i + lz) & 3], side: THREE.DoubleSide }));
+        c.position.set(-31.4 + i * 2.2, 6.0, lz);
+        scene.add(c);
+        cloths.push({ c, ph: i * 1.4 + lz });
+      }
+    }
+    world.updatables.push((dt, t) => {
+      for (const { c, ph } of cloths) c.rotation.x = Math.sin(t * 1.6 + ph) * 0.35;
+    });
+  }
+
+  // ---- Tin Hau Temple (天后廟, by the Temple St market) ----
+  {
+    const g = new THREE.Group();
+    const red = new THREE.MeshToonMaterial({ color: 0xa83232 });
+    const roofM = new THREE.MeshToonMaterial({ color: 0x2d6b4f });
+    const base = new THREE.Mesh(new THREE.BoxGeometry(12, 0.6, 9),
+      new THREE.MeshStandardMaterial({ color: 0xb8b0a0, roughness: 1 }));
+    base.position.y = 0.3; g.add(base);
+    const hall = new THREE.Mesh(new THREE.BoxGeometry(10, 4.4, 7), red);
+    hall.position.y = 2.8; hall.castShadow = true; g.add(hall);
+    for (const cx of [-4.2, 4.2]) {           // gold-trimmed columns
+      const col = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 4.4, 8),
+        new THREE.MeshToonMaterial({ color: 0xe8b54a }));
+      col.position.set(cx, 2.8, 3.6); g.add(col);
+    }
+    // sloped roof: two tilted slabs meeting at a ridge
+    for (const s of [-1, 1]) {
+      const slab = new THREE.Mesh(new THREE.BoxGeometry(11.4, 0.25, 4.6), roofM);
+      slab.rotation.x = s * 0.42;
+      slab.position.set(0, 5.85, s * 2.05);
+      slab.castShadow = true;
+      g.add(slab);
+    }
+    const ridge = new THREE.Mesh(new THREE.BoxGeometry(11.6, 0.4, 0.5), roofM);
+    ridge.position.y = 6.75; g.add(ridge);
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 1.2),
+      new THREE.MeshBasicMaterial({ map: neonTexture('天后廟', '#ffd35c') }));
+    sign.position.set(0, 4.4, 3.56); g.add(sign);
+    // incense smoke wisp
+    const smoke = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 8),
+      new THREE.MeshBasicMaterial({ color: 0xcccccc, transparent: true, opacity: 0.3 }));
+    smoke.position.set(3, 4, 4.4); g.add(smoke);
+    world.updatables.push((dt, t) => {
+      smoke.position.y = 4 + ((t * 0.5) % 2.4);
+      smoke.material.opacity = 0.32 - ((t * 0.5) % 2.4) * 0.12;
+      smoke.scale.setScalar(1 + ((t * 0.5) % 2.4) * 0.45);
+    });
+    g.position.set(-44, 0, -96);
+    scene.add(g);
+    addCollider(-44, -96, 12.5, 9.5);
+  }
+
+  // ---- sightseeing helicopter circling the harbour ----
+  {
+    const heli = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.SphereGeometry(1.1, 10, 8),
+      new THREE.MeshToonMaterial({ color: 0xe8e2d8 }));
+    body.scale.set(1.5, 0.85, 0.9); heli.add(body);
+    const tail = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.3, 3.4, 6),
+      new THREE.MeshToonMaterial({ color: 0xc23a3a }));
+    tail.rotation.z = Math.PI / 2;
+    tail.position.x = -2.5; heli.add(tail);
+    const rotor = new THREE.Mesh(new THREE.BoxGeometry(5.6, 0.07, 0.32),
+      new THREE.MeshToonMaterial({ color: 0x333845 }));
+    rotor.position.y = 1.1; heli.add(rotor);
+    const blink = new THREE.Mesh(new THREE.SphereGeometry(0.16, 6, 6),
+      new THREE.MeshBasicMaterial({ color: 0xff4040 }));
+    blink.position.y = -0.95; heli.add(blink);
+    scene.add(heli);
+    world.updatables.push((dt, t) => {
+      const a = t * 0.1;
+      heli.position.set(Math.sin(a) * 95, 36 + Math.sin(t * 0.7) * 1.5, 150 + Math.cos(a) * 38);
+      heli.rotation.y = -a;                  // nose along the flight path
+      rotor.rotation.y = t * 22;
+      blink.material.color.set(Math.sin(t * 6) > 0 ? 0xff4040 : 0x401010);
+    });
+  }
+
   world.setMorning(false);   // default mood; main.js applies the player's choice
   return world;
 }

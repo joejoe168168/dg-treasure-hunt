@@ -9,6 +9,10 @@ import {
 import { pickQuestions, resetQuestionPool, CATEGORIES, DIFFICULTIES } from './questions.js';
 import { sfx, startBgm, toggleBgm } from './audio.js';
 import { IS_TOUCH, LOW_FX, pointLight } from './quality.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import {
   saveScore, loadBoard, renderBoard, fetchRemoteBoard, submitScore,
 } from './leaderboard.js';
@@ -40,10 +44,21 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 600);
 
+// desktop only: bloom post-processing for that neon HK glow
+let composer = null;
+if (!LOW_FX) {
+  composer = new EffectComposer(renderer);
+  composer.addPass(new RenderPass(scene, camera));
+  composer.addPass(new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight), 0.42, 0.55, 0.85));
+  composer.addPass(new OutputPass());
+}
+
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  composer?.setSize(window.innerWidth, window.innerHeight);
 });
 
 // ---------------- world & player ----------------
@@ -276,6 +291,121 @@ dog.rotation.y = 0.8;
 scene.add(dog);
 let dogFollowing = false;
 
+// ---------------- lucky cat 招財貓 ----------------
+function makeLuckyCat() {
+  const cat = new THREE.Group();
+  const white = new THREE.MeshToonMaterial({ color: 0xfdf6ec });
+  const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.75, 0.5, 12),
+    new THREE.MeshToonMaterial({ color: 0xb03030 }));
+  stand.position.y = 0.25; cat.add(stand);
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 10), white);
+  body.scale.set(1, 1.15, 0.9);
+  body.position.y = 1.0; cat.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.42, 12, 10), white);
+  head.position.y = 1.85; cat.add(head);
+  for (const s of [-1, 1]) {
+    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.13, 0.22, 4), white);
+    ear.position.set(s * 0.26, 2.22, 0);
+    cat.add(ear);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.045, 6, 6),
+      new THREE.MeshBasicMaterial({ color: 0x222222 }));
+    eye.position.set(s * 0.15, 1.92, 0.38);
+    cat.add(eye);
+  }
+  const collar = new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.05, 6, 14),
+    new THREE.MeshToonMaterial({ color: 0xcc2222 }));
+  collar.rotation.x = Math.PI / 2;
+  collar.position.y = 1.5; cat.add(collar);
+  const bell = new THREE.Mesh(new THREE.SphereGeometry(0.09, 8, 8),
+    new THREE.MeshToonMaterial({ color: 0xffd24a }));
+  bell.position.set(0, 1.42, 0.3); cat.add(bell);
+  // gold koban coin held against the belly
+  const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 0.07, 12),
+    new THREE.MeshToonMaterial({ color: 0xf3c14b }));
+  coin.rotation.x = Math.PI / 2;
+  coin.position.set(0, 1.0, 0.48); cat.add(coin);
+  // waving left arm — pivot at the shoulder
+  const armPivot = new THREE.Group();
+  armPivot.position.set(0.5, 1.35, 0.1);
+  const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, 0.4, 4, 8), white);
+  arm.position.y = 0.25;
+  armPivot.add(arm);
+  cat.add(armPivot);
+  cat.userData.arm = armPivot;
+  return cat;
+}
+const luckyCat = makeLuckyCat();
+luckyCat.position.set(11.5, 0, 30);     // on the Nathan Rd east pavement
+luckyCat.rotation.y = -Math.PI / 2.3;
+scene.add(luckyCat);
+let catRubbed = false;
+
+// ---------------- pigeon flocks that scatter ----------------
+function makePigeon() {
+  const p = new THREE.Group();
+  const grey = new THREE.MeshToonMaterial({ color: 0x9aa0ad });
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.13, 8, 6), grey);
+  body.scale.set(1.35, 1, 1); body.position.y = 0.14; p.add(body);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.07, 8, 6),
+    new THREE.MeshToonMaterial({ color: 0x6f7686 }));
+  head.position.set(0.16, 0.26, 0); p.add(head);
+  const wings = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.02, 0.42), grey);
+  wings.position.y = 0.2; p.add(wings);
+  p.userData.wings = wings;
+  return p;
+}
+const flocks = [];
+for (const [fx, fz] of [[-19, -34], [18, 78], [-15, 105]]) {
+  const birds = [];
+  for (let i = 0; i < 3; i++) {
+    const b = makePigeon();
+    const a = i * 2.1, r = 0.7 + i * 0.35;
+    b.position.set(fx + Math.cos(a) * r, 0, fz + Math.sin(a) * r);
+    b.rotation.y = Math.random() * Math.PI * 2;
+    scene.add(b);
+    birds.push({ m: b, hx: b.position.x, hz: b.position.z, va: a });
+  }
+  flocks.push({ birds, state: 'idle', t: 0, fx, fz });
+}
+function updatePigeons(dt, t) {
+  for (const f of flocks) {
+    if (f.state === 'idle') {
+      for (const b of f.birds) {
+        b.m.position.y = Math.abs(Math.sin(t * 3 + b.va)) * 0.03;  // pecking bob
+        b.m.userData.wings.rotation.x = 0;
+      }
+      if (Math.hypot(f.fx - girl.position.x, f.fz - girl.position.z) < 3.5) {
+        f.state = 'fly'; f.t = 0;
+        sfx.flap?.();
+      }
+    } else if (f.state === 'fly') {
+      f.t += dt;
+      for (const b of f.birds) {
+        const ang = b.va + f.t * 0.8;
+        b.m.position.x += Math.cos(ang) * dt * 5;
+        b.m.position.z += Math.sin(ang) * dt * 5;
+        b.m.position.y += dt * (6 - f.t * 1.5);
+        b.m.rotation.y = -ang;
+        b.m.userData.wings.rotation.x = Math.sin(f.t * 30) * 0.9;  // frantic flapping
+      }
+      if (f.t > 2.6) {
+        f.state = 'gone'; f.t = 0;
+        for (const b of f.birds) b.m.visible = false;
+      }
+    } else {                                  // gone → respawn later
+      f.t += dt;
+      if (f.t > 9 && Math.hypot(f.fx - girl.position.x, f.fz - girl.position.z) > 8) {
+        f.state = 'idle';
+        for (const b of f.birds) {
+          b.m.visible = true;
+          b.m.position.set(b.hx, 0, b.hz);
+          b.m.rotation.y = Math.random() * Math.PI * 2;
+        }
+      }
+    }
+  }
+}
+
 // ---------------- NPC friends (hints + fun facts) ----------------
 const npcs = NPC_SPOTS.map((spot, i) => {
   const npc = createGirl();
@@ -345,6 +475,7 @@ const state = {
   streak: 0,              // consecutive correct answers across chests
   startTime: 0,
   nearChest: null,
+  nearCat: null,
   nearNpc: null,
   nearDog: false,
   boostUntil: 0,
@@ -365,6 +496,24 @@ function doInteract() {
   if (state.nearChest) openChest(state.nearChest);
   else if (state.nearNpc) talkToNpc(state.nearNpc);
   else if (state.nearDog && !dogFollowing) adoptDog();
+  else if (state.nearCat) rubLuckyCat();
+}
+
+function rubLuckyCat() {
+  if (catRubbed) {
+    toast('🐱 招財貓已經送咗好運俾你今次喇～');
+    return;
+  }
+  catRubbed = true;
+  const bonus = [28, 38, 58, 88][Math.floor(Math.random() * 4)];
+  state.score += bonus;
+  state.catWaveFast = performance.now() + 3000;
+  sfx.coin();
+  sparkleBurst(luckyCat.position.clone().add(new THREE.Vector3(0, 1.6, 0)), 0xffd24a);
+  toast(`🐱✨ 招財貓送你好運！(+${bonus} 分)`, 4000);
+  setPrompt(null);
+  state.nearCat = false;
+  updateHUD();
 }
 
 function adoptDog() {
@@ -967,15 +1116,20 @@ function loop() {
     }
     const nearDog = !nearChest && !nearNpc && !dogFollowing &&
       Math.hypot(dog.position.x - girl.position.x, dog.position.z - girl.position.z) < 2.4;
-    if (nearChest !== state.nearChest || nearNpc !== state.nearNpc || nearDog !== state.nearDog) {
+    const nearCat = !nearChest && !nearNpc && !nearDog && !catRubbed &&
+      Math.hypot(luckyCat.position.x - girl.position.x, luckyCat.position.z - girl.position.z) < 2.6;
+    if (nearChest !== state.nearChest || nearNpc !== state.nearNpc ||
+        nearDog !== state.nearDog || nearCat !== state.nearCat) {
       state.nearChest = nearChest;
       state.nearNpc = nearNpc;
       state.nearDog = nearDog;
+      state.nearCat = nearCat;
       if (nearChest) setPrompt('<span class="key-cap">E</span> 開寶箱 Open Chest!');
       else if (nearNpc) setPrompt('<span class="key-cap">E</span> 同同學傾偈 Talk!');
       else if (nearDog) setPrompt('<span class="key-cap">E</span> 摸吓小狗 Pet the puppy!');
+      else if (nearCat) setPrompt('<span class="key-cap">E</span> 摸吓招財貓 Lucky cat!');
       else setPrompt(null);
-      actionBtn.textContent = nearChest ? '🎁' : nearDog ? '🐶' : '💬';
+      actionBtn.textContent = nearChest ? '🎁' : nearDog ? '🐶' : nearCat ? '🐱' : '💬';
     }
   }
 
@@ -1006,6 +1160,13 @@ function loop() {
     }
   }
 
+  // lucky cat waves; pigeons peck / scatter
+  {
+    const fast = performance.now() < (state.catWaveFast || 0);
+    luckyCat.userData.arm.rotation.x = -0.6 + Math.sin(t * (fast ? 16 : 2.4)) * 0.5;
+    if (state.phase === 'play' || state.phase === 'quiz') updatePigeons(dt, t);
+  }
+
   animateGirl(girl, dt, speedFactor * (boosted ? 1.25 : 1));
 
   if (!window.__camLock) {
@@ -1015,7 +1176,8 @@ function loop() {
   }
 
   if (state.phase !== 'start') drawMinimap();
-  renderer.render(scene, camera);
+  if (composer) composer.render();
+  else renderer.render(scene, camera);
 }
 loop();
 

@@ -26,10 +26,18 @@ and MTR stations — find all 16 treasure chests and climb the leaderboard!
    - 😋 Street-food stalls (egg tarts, fishballs, egg waffles…) — +15 and an 8s speed boost
    - 💬 NPC schoolmates share Hong Kong fun facts, hints to the nearest chest, and +20
    - 🐶 A **puppy** waits by Kowloon Park — pet it and it follows you for the whole hunt!
+   - 🐱 A **lucky cat (招財貓)** waves on the Nathan Road pavement — rub it once per
+     game for a surprise bonus (up to +88!)
+   - 🕊️ **Pigeon flocks** peck around the streets and scatter into the air as you run up
    - 🚖 **Dodge the traffic!** Taxis, red double-deckers and HK minibuses cruise the
      roads — get hit and you lose 10 points, so use the zebra crossings!
    - 🎆 Answer all 3 correctly and **fireworks** light up the sky
    - 🌃 Watch the **Symphony of Lights** beams sweeping over Victoria Harbour
+   - 🚁 A sightseeing **helicopter** circles the harbour with a blinking beacon
+   - 🏮 Street life everywhere: working **pedestrian crossing lights** (flashing green
+     man!), **bamboo scaffolding** with a safety net, **laundry swaying** over Temple
+     Street, incense smoke at the **Tin Hau Temple**…
+   - ✨ On desktop, neon signs **bloom and glow** with real post-processing
 5. Scoring: correct answer +100 × multiplier plus a speed bonus; **streak combos**
    (3+ correct in a row) earn growing bonuses; all 3 correct = perfect bonus; finish
    fast for a completion time bonus!
@@ -42,7 +50,7 @@ and MTR stations — find all 16 treasure chests and climb the leaderboard!
 | Action | Desktop | Mobile / Tablet |
 | --- | --- | --- |
 | Move | `WASD` or arrow keys | Floating joystick — touch anywhere on the lower screen |
-| Open chest / talk / pet | `E` | 🎁 / 💬 / 🐶 button |
+| Open chest / talk / pet / rub | `E` | 🎁 / 💬 / 🐶 / 🐱 button |
 
 ## Run it
 
