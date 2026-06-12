@@ -41,7 +41,7 @@ and MTR stations — find all 16 treasure chests and climb the leaderboard!
 
 | Action | Desktop | Mobile / Tablet |
 | --- | --- | --- |
-| Move | `WASD` or arrow keys | Left-side virtual joystick |
+| Move | `WASD` or arrow keys | Floating joystick — touch anywhere on the lower screen |
 | Open chest / talk / pet | `E` | 🎁 / 💬 / 🐶 button |
 
 ## Run it

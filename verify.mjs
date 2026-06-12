@@ -60,6 +60,16 @@ const browser = await puppeteer.launch({
   await new Promise(r => setTimeout(r, 1500));
   await pg.screenshot({ path: 'verify-mobile-play.png' });
   await pg.touchscreen.touchEnd();
+  // joystick should also work on the bottom-RIGHT side now
+  await pg.touchscreen.touchStart(650, 330);
+  await pg.touchscreen.touchMove(650, 290);
+  await new Promise(r => setTimeout(r, 900));
+  await pg.screenshot({ path: 'verify-mobile-right-joy.png' });
+  await pg.touchscreen.touchEnd();
+  // night mode on mobile (no point lights — must still look good)
+  await pg.tap('#time-btn');
+  await new Promise(r => setTimeout(r, 500));
+  await pg.screenshot({ path: 'verify-mobile-night.png' });
   const moved = await pg.evaluate(() => window.__dg.girl.position.z);
   console.log('touch-device class:', touchClass, '| girl z after joystick (started -15):', moved.toFixed(1));
   console.log('mobile errors:', errors.length ? errors.join('; ') : 'NONE');

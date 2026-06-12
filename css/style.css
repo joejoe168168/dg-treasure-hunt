@@ -173,11 +173,14 @@ button.hud-pill:active { transform: scale(.94); }
 @keyframes toast-in { from { transform: translateX(-50%) scale(.6); opacity: 0; } to { transform: translateX(-50%) scale(1); opacity: 1; } }
 
 /* mobile controls */
+/* floating joystick: touch ANYWHERE on the lower half (left or
+   right) and the stick appears under your thumb */
 #joystick-zone {
   position: absolute; left: 0; bottom: 0;
-  width: 46vw; height: 44vh;
+  width: 100vw; height: 48vh;
   pointer-events: auto;
   display: none;
+  touch-action: none;
 }
 #joystick-base {
   position: absolute; left: 60px; bottom: 60px;
@@ -201,6 +204,8 @@ button.hud-pill:active { transform: scale(.94); }
   font-size: 36px;
   pointer-events: auto;
   box-shadow: 0 6px 20px rgba(0,0,0,.45);
+  z-index: 5;            /* stays above the joystick zone */
+  touch-action: none;
 }
 #action-btn:active { transform: scale(.92); }
 body.touch-device #joystick-zone { display: block; }

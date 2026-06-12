@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // Jordan / Tsim Sha Tsui at dusk, following the real street
 // grid: Nathan Road spine, Jordan / Austin / Haiphong / Peking /
 // Salisbury Roads, Canton Road, Temple Street and Chatham Road.
@@ -9,6 +9,7 @@
 // ============================================================
 import * as THREE from 'three';
 import { addLandmarks, LANDMARK_ZONES } from './landmarks.js';
+import { LOW_FX, pointLight } from './quality.js';
 
 export const MAP = {
   minX: -98, maxX: 92,
@@ -141,7 +142,8 @@ export function createWorld(scene) {
       scene.background.set(0x1a1f4d);
       scene.fog.color.set(0x1a1f4d);
       scene.fog.near = 70; scene.fog.far = 250;
-      hemi.color.set(0x6b7ad9); hemi.groundColor.set(0x3a3050); hemi.intensity = 1.4;
+      // mobile has no decorative lamps, so lift the ambient a little
+      hemi.color.set(0x6b7ad9); hemi.groundColor.set(0x3a3050); hemi.intensity = LOW_FX ? 1.8 : 1.4;
       moon.color.set(0xbfd0ff); moon.intensity = 1.2;
       moon.position.set(-60, 90, -40);
       warm.intensity = 0.35;
@@ -284,7 +286,7 @@ export function createWorld(scene) {
       new THREE.MeshStandardMaterial({ color: 0x555a6e }));
     pole.position.set(side * 12, sign.position.y + 1.6, z);
     scene.add(pole);
-    const glow = new THREE.PointLight(new THREE.Color(n.color), 6, 18, 1.8);
+    const glow = pointLight(new THREE.Color(n.color), 6, 18, 1.8);
     glow.position.set(side * 8.5, sign.position.y, z);
     scene.add(glow);
     world.updatables.push((dt, t) => {
@@ -308,7 +310,7 @@ export function createWorld(scene) {
     lamp.add(arm);
     lamp.position.set(x, 0, z);
     scene.add(lamp);
-    const lite = new THREE.PointLight(0xffc878, 6, 16, 2);
+    const lite = pointLight(0xffc878, 6, 16, 2);
     lite.position.set(x + facing * -1.2, 5.6, z);
     scene.add(lite);
   };
@@ -437,7 +439,7 @@ export function createWorld(scene) {
       stall.position.set(sx, 0, z);
       scene.add(stall);
       addCollider(sx, z, 3.4, 2.4);
-      const stallLight = new THREE.PointLight(0xffd9a0, 4, 9, 2);
+      const stallLight = pointLight(0xffd9a0, 4, 9, 2);
       stallLight.position.set(sx, 2, z);
       scene.add(stallLight);
     }
@@ -575,7 +577,7 @@ export function createWorld(scene) {
     lightBox.position.y = 1.6;
     taxi.add(bodyT, cab, lightBox);
     addWheels(taxi, [[-0.95, 1.4], [0.95, 1.4], [-0.95, -1.4], [0.95, -1.4]]);
-    const head = new THREE.PointLight(0xfff0c0, 3, 9, 2);
+    const head = pointLight(0xfff0c0, 3, 9, 2);
     head.position.set(0, 0.8, 2.4);
     taxi.add(head);
     return taxi;
@@ -594,7 +596,7 @@ export function createWorld(scene) {
     windows.position.set(0, 1.35, -0.3);
     bus.add(windows);
     addWheels(bus, [[-1.0, 1.8], [1.0, 1.8], [-1.0, -1.8], [1.0, -1.8]]);
-    const head = new THREE.PointLight(0xfff0c0, 3, 9, 2);
+    const head = pointLight(0xfff0c0, 3, 9, 2);
     head.position.set(0, 0.8, 2.9);
     bus.add(head);
     return bus;
@@ -615,7 +617,7 @@ export function createWorld(scene) {
       bus.add(win);
     }
     addWheels(bus, [[-1.1, 2.6], [1.1, 2.6], [-1.1, -2.6], [1.1, -2.6]], 0.45);
-    const head = new THREE.PointLight(0xfff0c0, 3, 10, 2);
+    const head = pointLight(0xfff0c0, 3, 10, 2);
     head.position.set(0, 0.8, 4.2);
     bus.add(head);
     return bus;

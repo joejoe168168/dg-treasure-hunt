@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // Recognisable Tsim Sha Tsui landmarks, modelled low-poly:
 // Clock Tower, Star Ferry Pier, Cultural Centre, Space Museum,
 // The Peninsula, 1881 Heritage, iSQUARE, Chungking Mansions,
@@ -7,6 +7,7 @@
 // Positions follow the real street layout (+z = toward harbour).
 // ============================================================
 import * as THREE from 'three';
+import { pointLight } from './quality.js';
 
 function signTexture(text, color = '#ffffff', bg = '#10142e', fontSize = 44) {
   const c = document.createElement('canvas');
@@ -82,7 +83,7 @@ export function addLandmarks(scene, world, { buildingTexture }) {
     scene.add(g);
     addCollider(-68, 118, 6.5, 6.5);
     mark(-68, 118, '#d9a23c', 4);
-    const up = new THREE.PointLight(0xffe2b0, 10, 35, 1.6);
+    const up = pointLight(0xffe2b0, 10, 35, 1.6);
     up.position.set(-68, 6, 122); scene.add(up);
   }
 
@@ -139,7 +140,7 @@ export function addLandmarks(scene, world, { buildingTexture }) {
     addCollider(-20, 116, 18, 12);
     mark(-20, 116, '#f2efe6', 5);
     addSign(scene, '香港太空館 Space Museum', -20, 5.2, 109.4, 13, '#7db8ff', Math.PI, '#1c2440');
-    const up = new THREE.PointLight(0x9fc8ff, 7, 24, 1.8);
+    const up = pointLight(0x9fc8ff, 7, 24, 1.8);
     up.position.set(-20, 12, 116); scene.add(up);
   }
 
@@ -271,7 +272,7 @@ export function addLandmarks(scene, world, { buildingTexture }) {
     addCollider(42, 114, 25, 25);
     mark(42, 114, '#a8855c', 7);
     addSign(scene, 'K11 MUSEA', 42, 20, 101, 11, '#ffc88a', Math.PI, '#221608');
-    const up = new THREE.PointLight(0xffb070, 9, 30, 1.7);
+    const up = pointLight(0xffb070, 9, 30, 1.7);
     up.position.set(42, 5, 100); scene.add(up);
   }
 

@@ -8,6 +8,7 @@ import {
 } from './world.js';
 import { pickQuestions, resetQuestionPool, CATEGORIES, DIFFICULTIES } from './questions.js';
 import { sfx, startBgm, toggleBgm } from './audio.js';
+import { IS_TOUCH, LOW_FX, pointLight } from './quality.js';
 import {
   saveScore, loadBoard, renderBoard, fetchRemoteBoard, submitScore,
 } from './leaderboard.js';
@@ -22,14 +23,17 @@ const nameInput = $('player-name'), startBtn = $('start-btn');
 const interactPrompt = $('interact-prompt'), actionBtn = $('action-btn');
 const toastEl = $('toast');
 
-const isTouch = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+const isTouch = IS_TOUCH;
 if (isTouch) document.body.classList.add('touch-device');
 
 // ---------------- renderer / scene / camera ----------------
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+// Mobile: no AA, lower resolution, no shadows — big speed boost
+const renderer = new THREE.WebGLRenderer({
+  canvas, antialias: !LOW_FX, powerPreference: 'high-performance',
+});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, LOW_FX ? 1.5 : 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = true;
+renderer.shadowMap.enabled = !LOW_FX;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 
@@ -95,7 +99,7 @@ function makeChest() {
   beacon.position.y = 7;
   g.add(beacon);
 
-  const glow = new THREE.PointLight(0xffc83c, 8, 12, 1.8);
+  const glow = pointLight(0xffc83c, 8, 12, 1.8);
   glow.position.y = 1.5;
   g.add(glow);
 
@@ -216,7 +220,7 @@ const foodStalls = FOOD_STALLS.map((f, i) => {
     new THREE.MeshBasicMaterial({ color: 0xffe9a8 }));
   food.position.set(0, 1.7, 0);
   g.add(food);
-  const lite = new THREE.PointLight(0xffd9a0, 3, 7, 2);
+  const lite = pointLight(0xffd9a0, 3, 7, 2);
   lite.position.y = 2;
   g.add(lite);
   g.position.set(f.x, 0, f.z);
@@ -647,8 +651,10 @@ function finishChestQuiz() {
   chest.userData.opened = true;
   chest.userData.lid.rotation.x = -0.9;
   chest.userData.beacon.visible = false;
-  chest.userData.glow.intensity = 2;
-  chest.userData.glow.color.set(0x6688ff);
+  if (chest.userData.glow.isPointLight) {
+    chest.userData.glow.intensity = 2;
+    chest.userData.glow.color.set(0x6688ff);
+  }
   state.chestsOpened++;
   sparkleBurst(chest.position, 0xff8fb6);
 

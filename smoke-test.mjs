@@ -48,6 +48,9 @@ for (let i = 0; i < 3; i++) {
   await page.click('#quiz-answers .answer-btn');
   await new Promise(r => setTimeout(r, 1600));
 }
+await page.waitForFunction(
+  () => !document.getElementById('chest-result').classList.contains('hidden'),
+  { timeout: 15000 });
 await page.screenshot({ path: 'shot-5-result.png' });
 await page.click('#chest-continue-btn');
 await new Promise(r => setTimeout(r, 600));
