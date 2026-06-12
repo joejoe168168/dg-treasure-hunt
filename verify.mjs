@@ -54,18 +54,30 @@ const browser = await puppeteer.launch({
   await pg.tap('#start-btn');
   await new Promise(r => setTimeout(r, 1200));
   const touchClass = await pg.evaluate(() => document.body.classList.contains('touch-device'));
-  // simulate joystick drag (forward)
+  // joystick drag UP -> girl should move forward (z increases)
+  const z0 = await pg.evaluate(() => window.__dg.girl.position.z);
   await pg.touchscreen.touchStart(150, 300);
-  await pg.touchscreen.touchMove(150, 260);
-  await new Promise(r => setTimeout(r, 1500));
+  await pg.touchscreen.touchMove(150, 255);
+  await new Promise(r => setTimeout(r, 300));
+  const joyVis = await pg.evaluate(() => {
+    const b = document.getElementById('joystick-base');
+    const r = b.getBoundingClientRect();
+    return b.style.display === 'block' &&
+      r.top >= 0 && r.bottom <= window.innerHeight && r.left >= 0;
+  });
+  await new Promise(r => setTimeout(r, 900));
   await pg.screenshot({ path: 'verify-mobile-play.png' });
   await pg.touchscreen.touchEnd();
-  // joystick should also work on the bottom-RIGHT side now
-  await pg.touchscreen.touchStart(650, 330);
-  await pg.touchscreen.touchMove(650, 290);
-  await new Promise(r => setTimeout(r, 900));
+  const z1 = await pg.evaluate(() => window.__dg.girl.position.z);
+  // joystick drag DOWN on the bottom-RIGHT -> girl should move BACK (z decreases)
+  await pg.touchscreen.touchStart(650, 290);
+  await pg.touchscreen.touchMove(650, 335);
+  await new Promise(r => setTimeout(r, 1200));
   await pg.screenshot({ path: 'verify-mobile-right-joy.png' });
   await pg.touchscreen.touchEnd();
+  const z2 = await pg.evaluate(() => window.__dg.girl.position.z);
+  console.log(`joystick base visible on screen: ${joyVis}`);
+  console.log(`forward: z ${z0.toFixed(1)} -> ${z1.toFixed(1)} (should increase) | backward: -> ${z2.toFixed(1)} (should decrease)`);
   // night mode on mobile (no point lights — must still look good)
   await pg.tap('#time-btn');
   await new Promise(r => setTimeout(r, 500));

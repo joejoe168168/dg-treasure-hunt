@@ -378,23 +378,27 @@ function adoptDog() {
   updateHUD();
 }
 
-// virtual joystick
-const joy = { active: false, dx: 0, dy: 0 };
+// virtual floating joystick — the stick appears under the finger.
+// The touch point itself is the stick centre (joy.cx/cy), and the
+// base circle is positioned in ZONE coordinates, not viewport ones.
+const joy = { active: false, dx: 0, dy: 0, cx: 0, cy: 0 };
 const joyZone = $('joystick-zone'), joyBase = $('joystick-base'), joyKnob = $('joystick-knob');
 joyZone.addEventListener('pointerdown', e => {
+  e.preventDefault();
   joy.active = true;
   joy.id = e.pointerId;
+  joy.cx = e.clientX;
+  joy.cy = e.clientY;
+  const zr = joyZone.getBoundingClientRect();
   joyBase.style.display = 'block';
-  joyBase.style.left = (e.clientX - 60) + 'px';
-  joyBase.style.top = (e.clientY - 60) + 'px';
+  joyBase.style.left = (e.clientX - zr.left - 60) + 'px';
+  joyBase.style.top = (e.clientY - zr.top - 60) + 'px';
   joyBase.style.bottom = 'auto';
   joyZone.setPointerCapture(e.pointerId);
 });
 joyZone.addEventListener('pointermove', e => {
   if (!joy.active || e.pointerId !== joy.id) return;
-  const rect = joyBase.getBoundingClientRect();
-  const cx = rect.left + 60, cy = rect.top + 60;
-  let dx = e.clientX - cx, dy = e.clientY - cy;
+  let dx = e.clientX - joy.cx, dy = e.clientY - joy.cy;
   const len = Math.hypot(dx, dy);
   if (len > 48) { dx = dx / len * 48; dy = dy / len * 48; }
   joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
