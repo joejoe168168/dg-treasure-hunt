@@ -1,0 +1,13 @@
+{
+  "name": "dg-treasure-hunt",
+  "version": "1.0.0",
+  "description": "3D treasure hunt game in Jordan/Tsim Sha Tsui, Hong Kong — built with three.js",
+  "type": "module",
+  "scripts": {
+    "start": "py -m http.server 8000",
+    "test": "node smoke-test.mjs"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^24.0.0"
+  }
+}

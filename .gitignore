@@ -1,0 +1,8 @@
+node_modules/
+shot-*.png
+verify-*.png
+scenic-*.png
+
+# private reference photos — never commit
+dggirls*.png
+package-lock.json
