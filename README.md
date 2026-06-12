@@ -18,8 +18,8 @@ and MTR stations — find all 16 treasure chests and climb the leaderboard!
      switchable in-game any time with the HUD button
 2. Find the **16 glowing treasure chests** at real TST landmarks (gold dots on the minimap).
 3. Each chest asks **3 multiple-choice questions** (Math / English / Chinese / General
-   knowledge) from a bank of **360 hand-written questions** (120 per difficulty,
-   calibrated to the HK curriculum) plus endless generated math.
+   knowledge) from a bank of **600 hand-written questions** (200 per difficulty,
+   50 per subject, calibrated to the HK curriculum) plus endless generated math.
 4. Fun along the way:
    - 💰 Coins (+10) and ⭐ golden stars (+25) all over the streets
    - 🎀 Mystery gifts — random +50/+100/+150 points or a speed boost
@@ -82,7 +82,8 @@ js/main.js          Game engine: loop, controls, camera, chests, pickups, quiz f
 js/character.js     Procedural 3D girl model in uniform + walk animation
 js/world.js         Jordan/TST street grid, buildings, neon, harbour, park, market
 js/landmarks.js     Real TST landmarks (Clock Tower, Peninsula, K11, Mosque, …)
-js/questions.js     360 tiered questions (easy/medium/hard) + procedural math
+js/questions.js     question engine + procedural math generator
+js/questions/       600 hand-written questions, one file per tier
 js/audio.js         WebAudio sound effects + background music (no audio files)
 js/leaderboard.js   global leaderboard client (+ localStorage fallback)
 api/leaderboard.js  Vercel serverless function — global board in Vercel Blob
