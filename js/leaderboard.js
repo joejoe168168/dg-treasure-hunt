@@ -82,21 +82,18 @@ export function renderBoard(listEl, board, highlightName = null) {
   const medals = ['🥇', '🥈', '🥉'];
   board.slice(0, 10).forEach((entry, i) => {
     const li = document.createElement('li');
-    const mins = Math.floor(entry.timeSec / 60), secs = entry.timeSec % 60;
-    li.innerHTML =
-      `<span class="lb-rank">${medals[i] || (i + 1) + '.'}</span>` +
-      `<span class="lb-name">${escapeHtml(entry.name)}</span>` +
-      `<span class="lb-score">${entry.score} 分 · ${mins}:${String(secs).padStart(2, '0')}</span>`;
+    const safeTime = Number.isFinite(Number(entry.timeSec)) ? Math.max(0, Math.round(Number(entry.timeSec))) : 0;
+    const safeScore = Number.isFinite(Number(entry.score)) ? Math.max(0, Math.round(Number(entry.score))) : 0;
+    const mins = Math.floor(safeTime / 60), secs = safeTime % 60;
+    const rank = document.createElement('span'); rank.className = 'lb-rank'; rank.textContent = medals[i] || `${i + 1}.`;
+    const name = document.createElement('span'); name.className = 'lb-name'; name.textContent = String(entry.name ?? '');
+    const score = document.createElement('span'); score.className = 'lb-score';
+    score.textContent = `${safeScore} 分 · ${mins}:${String(secs).padStart(2, '0')}`;
+    li.append(rank, name, score);
     if (highlightName && entry.name === highlightName) {
       li.style.background = 'rgba(255,211,92,.35)';
       li.style.borderRadius = '8px';
     }
     listEl.appendChild(li);
   });
-}
-
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, ch => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  }[ch]));
 }

@@ -1,8 +1,10 @@
 // Headless smoke test: load game, start it, walk, open a chest, answer quiz.
 import puppeteer from 'puppeteer-core';
+import { browserExecutable } from './browser-path.mjs';
+import { artifactPath } from './test-artifacts.mjs';
 
 const browser = await puppeteer.launch({
-  executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+  executablePath: browserExecutable(),
   headless: 'new',
   args: ['--window-size=1280,800', '--use-gl=angle', '--enable-unsafe-swiftshader'],
 });
@@ -24,14 +26,14 @@ await new Promise(r => setTimeout(r, 3000));
 await page.type('#player-name', 'TestGirl');
 await page.click('#start-btn');
 await new Promise(r => setTimeout(r, 1200));
-await page.screenshot({ path: 'shot-2-game.png' });
+await page.screenshot({ path: artifactPath('shot-2-game.png') });
 
 // walk toward the harbour
 await page.keyboard.down('KeyW');
 await new Promise(r => setTimeout(r, 2000));
 await page.keyboard.up('KeyW');
 await new Promise(r => setTimeout(r, 600));
-await page.screenshot({ path: 'shot-3-walk.png' });
+await page.screenshot({ path: artifactPath('shot-3-walk.png') });
 
 // teleport beside chest 0 (Clock Tower) and open it via the debug hook
 await page.evaluate(() => {
@@ -41,7 +43,7 @@ await page.evaluate(() => {
   openChest(c);
 });
 await new Promise(r => setTimeout(r, 800));
-await page.screenshot({ path: 'shot-4-quiz.png' });
+await page.screenshot({ path: artifactPath('shot-4-quiz.png') });
 
 // answer 3 questions (always click the first answer)
 for (let i = 0; i < 3; i++) {
@@ -51,7 +53,7 @@ for (let i = 0; i < 3; i++) {
 await page.waitForFunction(
   () => !document.getElementById('chest-result').classList.contains('hidden'),
   { timeout: 15000 });
-await page.screenshot({ path: 'shot-5-result.png' });
+await page.screenshot({ path: artifactPath('shot-5-result.png') });
 await page.click('#chest-continue-btn');
 await new Promise(r => setTimeout(r, 600));
 

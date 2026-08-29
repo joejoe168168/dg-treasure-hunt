@@ -1,5 +1,7 @@
 // Capture scenic screenshots of landmark areas for visual verification.
 import puppeteer from 'puppeteer-core';
+import { browserExecutable } from './browser-path.mjs';
+import { artifactPath } from './test-artifacts.mjs';
 
 const VIEWS = [
   { name: 'shot-a-start', ui: true },
@@ -12,7 +14,7 @@ const VIEWS = [
 ];
 
 const b = await puppeteer.launch({
-  executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+  executablePath: browserExecutable(),
   headless: 'new',
   args: ['--use-gl=angle', '--enable-unsafe-swiftshader'],
 });
@@ -20,7 +22,7 @@ const pg = await b.newPage();
 await pg.setViewport({ width: 1280, height: 720 });
 await pg.goto('http://localhost:8000', { waitUntil: 'networkidle0' });
 await new Promise(r => setTimeout(r, 3000));
-await pg.screenshot({ path: VIEWS[0].name + '.png' });
+await pg.screenshot({ path: artifactPath(VIEWS[0].name + '.png') });
 
 await pg.type('#player-name', 'X');
 await pg.click('#start-btn');
@@ -37,7 +39,7 @@ for (const v of VIEWS.slice(1)) {
     cam.lookAt(...l);
   }, v.cam, v.look);
   await new Promise(r => setTimeout(r, 500));
-  await pg.screenshot({ path: v.name + '.png' });
+  await pg.screenshot({ path: artifactPath(v.name + '.png') });
 }
 await b.close();
 console.log('done');

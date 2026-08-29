@@ -1,16 +1,34 @@
 {
   "name": "dg-treasure-hunt",
-  "version": "1.0.0",
-  "description": "3D treasure hunt game in Jordan/Tsim Sha Tsui, Hong Kong — built with three.js",
+  "version": "1.2.0",
+  "description": "3D educational treasure hunt in Jordan and Tsim Sha Tsui, Hong Kong, built with Three.js",
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "start": "py -m http.server 8000",
-    "test": "node smoke-test.mjs"
+    "dev": "vite --host 0.0.0.0 --port 8000",
+    "start": "npm run dev",
+    "check": "node --check vite.config.js && node --check api/leaderboard.js && node --check js/main.js && node --check js/app/config.js && node --check js/app/game-state.js && node --check js/app/leaderboard-validation.js && node --check js/app/session-modes.js && node --check js/app/asset-manager.js && node --check js/systems/input-controller.js && node --check js/systems/interaction-system.js && node --check js/systems/scoring.js && node --check js/systems/mission-system.js && node --check js/systems/quiz-system.js && node --check js/systems/spatial-hash.js && node --check js/systems/three-dispose.js && node --check js/systems/update-scheduler.js && node --check js/ui/dialog-accessibility.js && node --check js/ui/hud.js && node --check js/ui/quiz-view.js && node --check js/world.js && node --check js/landmarks.js && node --check js/character.js && node --check js/questions.js && npm run validate:questions && node core-systems-test.mjs && node question-systems-test.mjs && node leaderboard-systems-test.mjs",
+    "build": "npm run check && vite build",
+    "preview": "vite preview --host 0.0.0.0 --port 8000",
+    "validate:questions": "node validate-questions.mjs",
+    "test": "start-server-and-test \"npm run dev\" http://127.0.0.1:8000 \"node smoke-test.mjs\"",
+    "test:visual": "start-server-and-test \"npm run dev\" http://127.0.0.1:8000 \"node verify.mjs\"",
+    "test:functional": "start-server-and-test \"npm run dev\" http://127.0.0.1:8000 \"node functional-audit.mjs\"",
+    "test:performance": "start-server-and-test \"npm run dev\" http://127.0.0.1:8000 \"node performance-audit.mjs\"",
+    "test:accessibility": "start-server-and-test \"npm run dev\" http://127.0.0.1:8000 \"node accessibility-audit.mjs\"",
+    "test:chests": "start-server-and-test \"npm run dev\" http://127.0.0.1:8000 \"node chest-check.mjs\"",
+    "test:props": "start-server-and-test \"npm run dev\" http://127.0.0.1:8000 \"node props-check.mjs\"",
+    "test:scenic": "start-server-and-test \"npm run dev\" http://127.0.0.1:8000 \"node scenic.mjs\""
   },
   "dependencies": {
-    "@vercel/blob": "^1.1.1"
+    "@vercel/blob": "^2.6.1",
+    "three": "0.160.0"
   },
   "devDependencies": {
-    "puppeteer-core": "^24.0.0"
+    "puppeteer-core": "^24.0.0",
+    "start-server-and-test": "^3.0.11",
+    "vite": "^7.0.0"
   }
 }

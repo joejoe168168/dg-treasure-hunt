@@ -1,4 +1,4 @@
-﻿// ============================================================
+// ============================================================
 // Jordan / Tsim Sha Tsui at dusk, following the real street
 // grid: Nathan Road spine, Jordan / Austin / Haiphong / Peking /
 // Salisbury Roads, Canton Road, Temple Street and Chatham Road.
@@ -10,6 +10,7 @@
 import * as THREE from 'three';
 import { addLandmarks, LANDMARK_ZONES } from './landmarks.js';
 import { LOW_FX, pointLight } from './quality.js';
+import { UpdateScheduler } from './systems/update-scheduler.js';
 
 export const MAP = {
   minX: -98, maxX: 92,
@@ -23,20 +24,30 @@ const rng = (() => { let s = 1337; return () => (s = (s * 16807) % 2147483647) /
 // ------------------------------------------------------------
 export function buildingTexture(baseColor, litRatio = 0.55) {
   const c = document.createElement('canvas');
-  c.width = 128; c.height = 256;
+  c.width = 256; c.height = 512;
   const g = c.getContext('2d');
   g.fillStyle = baseColor;
-  g.fillRect(0, 0, 128, 256);
+  g.fillRect(0, 0, 256, 512);
+  // Subtle concrete/glass variation gives façades depth without heavy assets.
+  const shade = g.createLinearGradient(0, 0, 256, 0);
+  shade.addColorStop(0, 'rgba(0,0,0,.24)');
+  shade.addColorStop(.16, 'rgba(255,255,255,.05)');
+  shade.addColorStop(.82, 'rgba(255,255,255,.02)');
+  shade.addColorStop(1, 'rgba(0,0,0,.2)');
+  g.fillStyle = shade; g.fillRect(0, 0, 256, 512);
   const litColors = ['#ffd97a', '#ffe9b8', '#9fd8ff', '#fff3d6'];
-  for (let y = 8; y < 248; y += 22) {
-    for (let x = 8; x < 120; x += 20) {
+  for (let y = 14; y < 500; y += 34) {
+    g.fillStyle = 'rgba(0,0,0,.2)'; g.fillRect(0, y + 23, 256, 3);
+    for (let x = 13; x < 245; x += 31) {
+      g.fillStyle = 'rgba(0,0,0,.42)'; g.fillRect(x - 3, y - 3, 25, 25);
       if (Math.random() < litRatio) {
         g.fillStyle = litColors[(Math.random() * litColors.length) | 0];
-        g.shadowColor = g.fillStyle; g.shadowBlur = 4;
+        g.shadowColor = g.fillStyle; g.shadowBlur = 6;
       } else {
         g.fillStyle = '#10142e'; g.shadowBlur = 0;
       }
-      g.fillRect(x, y, 13, 14);
+      g.fillRect(x, y, 19, 18);
+      g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(x + 2, y + 2, 2, 14);
     }
   }
   const tex = new THREE.CanvasTexture(c);
@@ -65,20 +76,46 @@ function neonTexture(text, color, bg = 'rgba(8,8,24,0.92)') {
 
 function roadTexture(vertical) {
   const c = document.createElement('canvas');
-  c.width = 128; c.height = 128;
+  c.width = 256; c.height = 256;
   const g = c.getContext('2d');
-  g.fillStyle = '#262a38';
-  g.fillRect(0, 0, 128, 128);
-  g.strokeStyle = '#cfd35a'; g.lineWidth = 4;
-  g.setLineDash([18, 14]);
+  g.fillStyle = '#30333a';
+  g.fillRect(0, 0, 256, 256);
+  // Asphalt grain, repaired patches and tyre wear.
+  for (let i = 0; i < 900; i++) {
+    const v = 38 + ((i * 37) % 28);
+    g.fillStyle = `rgba(${v},${v},${v + 3},${.035 + (i % 5) * .008})`;
+    g.fillRect((i * 73) % 256, (i * 151) % 256, 1 + (i % 3), 1 + ((i >> 2) % 2));
+  }
+  g.fillStyle = 'rgba(18,20,25,.13)';
+  if (vertical) { g.fillRect(52, 0, 28, 256); g.fillRect(176, 0, 24, 256); }
+  else { g.fillRect(0, 52, 256, 28); g.fillRect(0, 176, 256, 24); }
+  g.strokeStyle = '#e8d75f'; g.lineWidth = 5;
+  g.setLineDash([34, 24]);
   g.beginPath();
-  if (vertical) { g.moveTo(64, 0); g.lineTo(64, 128); }
-  else { g.moveTo(0, 64); g.lineTo(128, 64); }
+  if (vertical) { g.moveTo(128, 0); g.lineTo(128, 256); }
+  else { g.moveTo(0, 128); g.lineTo(256, 128); }
   g.stroke();
+  // Kerb-side white lines make the road width readable from the game camera.
+  g.setLineDash([]); g.strokeStyle = 'rgba(235,238,232,.72)'; g.lineWidth = 3;
+  if (vertical) {
+    g.beginPath(); g.moveTo(13, 0); g.lineTo(13, 256); g.moveTo(243, 0); g.lineTo(243, 256); g.stroke();
+  } else {
+    g.beginPath(); g.moveTo(0, 13); g.lineTo(256, 13); g.moveTo(0, 243); g.lineTo(256, 243); g.stroke();
+  }
   const tex = new THREE.CanvasTexture(c);
   tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
+}
+
+function promenadeTexture() {
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d'); g.fillStyle = '#777785'; g.fillRect(0, 0, 256, 256);
+  g.strokeStyle = 'rgba(225,225,218,.28)'; g.lineWidth = 3;
+  for (let y = 0; y <= 256; y += 32) { g.beginPath(); g.moveTo(0, y); g.lineTo(256, y); g.stroke(); }
+  for (let x = 0; x <= 256; x += 64) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 256); g.stroke(); }
+  const texture = new THREE.CanvasTexture(c); texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(18, 2); texture.colorSpace = THREE.SRGBColorSpace; return texture;
 }
 
 // the real street grid (game coordinates)
@@ -98,7 +135,7 @@ export const ROADS = [
 export function createWorld(scene) {
   const world = {
     colliders: [],
-    updatables: [],
+    systems: new UpdateScheduler(['decorative', 'traffic', 'events']),
     minimapItems: [],
     vehicles: [],        // moving traffic {group, hitR} — dodge them!
   };
@@ -115,6 +152,8 @@ export function createWorld(scene) {
   moon.shadow.camera.left = -110; moon.shadow.camera.right = 110;
   moon.shadow.camera.top = 130; moon.shadow.camera.bottom = -110;
   moon.shadow.camera.far = 300;
+  moon.shadow.bias = -0.0002;
+  moon.shadow.normalBias = 0.035;
   scene.add(moon);
   const warm = new THREE.DirectionalLight(0xffb070, 0.35);
   warm.position.set(50, 40, 60);
@@ -228,6 +267,8 @@ export function createWorld(scene) {
     exclusions.some(e => x0 < e.maxX && x1 > e.minX && z0 < e.maxZ && z1 > e.minZ);
 
   const buildMats = {};
+  const facadeDetails = [];
+  const balconyDetails = [];
   for (const b of blocks) {
     let cx = b.x0;
     while (cx < b.x1 - 6) {
@@ -251,6 +292,21 @@ export function createWorld(scene) {
           scene.add(bld);
           addCollider(cx + w / 2, cz + d / 2, w - 2.2, d - 2.2);
           world.minimapItems.push({ x: cx + w / 2, z: cz + d / 2, color: '#3a4470', r: 3 });
+          // A few carefully placed details break up repeated filler façades. They
+          // are instanced below so the richer street edge costs only two draws.
+          if (rng() < 0.42 && facadeDetails.length < 36) {
+            const floors = Math.min(3, Math.max(1, Math.floor(h / 10)));
+            for (let floor = 0; floor < floors && facadeDetails.length < 36; floor++) {
+              facadeDetails.push({
+                x: cx + w / 2 + (rng() - .5) * Math.max(2, w - 5),
+                y: 4.5 + floor * 5.2,
+                z: cz + 1.18,
+              });
+            }
+          }
+          if (rng() < 0.24 && balconyDetails.length < 20) {
+            balconyDetails.push({ x: cx + w / 2, y: Math.min(h - 2, 7.2), z: cz + 1.0, w: Math.min(5, w - 4) });
+          }
           if (rng() < 0.4) {
             const tank = new THREE.Mesh(new THREE.CylinderGeometry(1, 1, 2, 8),
               new THREE.MeshStandardMaterial({ color: 0x8a8d9c }));
@@ -262,6 +318,29 @@ export function createWorld(scene) {
       }
       cx += w + 1.5;
     }
+  }
+  if (facadeDetails.length) {
+    const acUnits = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(1.15, .72, .42),
+      new THREE.MeshStandardMaterial({ color: 0xb9bec7, roughness: .78, metalness: .22 }),
+      facadeDetails.length);
+    const dummy = new THREE.Object3D();
+    facadeDetails.forEach((detail, index) => {
+      dummy.position.set(detail.x, detail.y, detail.z); dummy.updateMatrix(); acUnits.setMatrixAt(index, dummy.matrix);
+    });
+    acUnits.castShadow = true; scene.add(acUnits);
+  }
+  if (balconyDetails.length) {
+    const balconies = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(1, .18, 1.05),
+      new THREE.MeshStandardMaterial({ color: 0x697187, roughness: .8, metalness: .15 }),
+      balconyDetails.length);
+    const dummy = new THREE.Object3D();
+    balconyDetails.forEach((detail, index) => {
+      dummy.position.set(detail.x, detail.y, detail.z); dummy.scale.set(detail.w, 1, 1);
+      dummy.updateMatrix(); balconies.setMatrixAt(index, dummy.matrix);
+    });
+    balconies.castShadow = true; scene.add(balconies);
   }
 
   // ---------------- neon signs over Nathan Road ----------------
@@ -289,7 +368,7 @@ export function createWorld(scene) {
     const glow = pointLight(new THREE.Color(n.color), 6, 18, 1.8);
     glow.position.set(side * 8.5, sign.position.y, z);
     scene.add(glow);
-    world.updatables.push((dt, t) => {
+    world.systems.add('decorative', (dt, t) => {
       glow.intensity = 5 + Math.sin(t * 3 + i * 1.7) * 1.5 + (Math.sin(t * 23 + i * 9) > 0.93 ? -3 : 0);
     });
   });
@@ -451,7 +530,7 @@ export function createWorld(scene) {
   // ---------------- harbour promenade + water + HK Island skyline ----------------
   {
     const prom = new THREE.Mesh(new THREE.PlaneGeometry(230, 26),
-      new THREE.MeshStandardMaterial({ color: 0x55505e, roughness: 1 }));
+      new THREE.MeshStandardMaterial({ map: promenadeTexture(), color: 0xb0b0b8, roughness: .92 }));
     prom.rotation.x = -Math.PI / 2;
     prom.position.set(-3, 0.02, 118);
     prom.receiveShadow = true;
@@ -467,15 +546,35 @@ export function createWorld(scene) {
       scene.add(p);
     }
 
-    const waterGeo = new THREE.PlaneGeometry(340, 120, 60, 24);
+    // Instanced benches and planters keep the waterfront detailed without a draw-call spike.
+    const benchSeat = new THREE.InstancedMesh(new THREE.BoxGeometry(3, .22, .75),
+      new THREE.MeshStandardMaterial({ color: 0x76513a, roughness: .78 }), 8);
+    const benchBack = new THREE.InstancedMesh(new THREE.BoxGeometry(3, .9, .18),
+      new THREE.MeshStandardMaterial({ color: 0x76513a, roughness: .78 }), 8);
+    const planter = new THREE.InstancedMesh(new THREE.CylinderGeometry(.72, .82, .7, 10),
+      new THREE.MeshStandardMaterial({ color: 0x696d72, roughness: .85 }), 8);
+    const leaves = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(.72, 1),
+      new THREE.MeshToonMaterial({ color: 0x397a4d }), 8);
+    const matrix = new THREE.Matrix4();
+    for (let i = 0; i < 8; i++) {
+      const x = -96 + i * 25;
+      matrix.makeTranslation(x, .55, 122); benchSeat.setMatrixAt(i, matrix);
+      matrix.makeTranslation(x, 1.05, 122.3); benchBack.setMatrixAt(i, matrix);
+      matrix.makeTranslation(x + 8, .37, 121.5); planter.setMatrixAt(i, matrix);
+      matrix.makeTranslation(x + 8, 1.3, 121.5); leaves.setMatrixAt(i, matrix);
+    }
+    scene.add(benchSeat, benchBack, planter, leaves);
+
+    const waterGeo = new THREE.PlaneGeometry(340, 120, LOW_FX ? 30 : 60, LOW_FX ? 12 : 24);
     const water = new THREE.Mesh(waterGeo,
-      new THREE.MeshStandardMaterial({ color: 0x16335e, roughness: 0.15, metalness: 0.55, flatShading: true }));
+      new THREE.MeshPhysicalMaterial({ color: 0x163d68, roughness: 0.16, metalness: 0.42,
+        clearcoat: .62, clearcoatRoughness: .18, flatShading: true }));
     water.rotation.x = -Math.PI / 2;
     water.position.set(0, -0.25, 190);
     scene.add(water);
     const wPos = waterGeo.attributes.position;
     const wBase = wPos.array.slice();
-    world.updatables.push((dt, t) => {
+    world.systems.add('decorative', (dt, t) => {
       for (let i = 0; i < wPos.count; i++) {
         const x = wBase[i * 3], y = wBase[i * 3 + 1];
         wPos.array[i * 3 + 2] = Math.sin(x * 0.12 + t * 1.3) * 0.35 + Math.cos(y * 0.2 + t * 0.9) * 0.3;
@@ -512,7 +611,7 @@ export function createWorld(scene) {
       scene.add(beam);
       nightOnly.push(beam);
       const phase = i * 1.3;
-      world.updatables.push((dt, t) => {
+      world.systems.add('decorative', (dt, t) => {
         beam.rotation.z = Math.sin(t * 0.35 + phase) * 0.55;
         beam.rotation.x = -0.5 + Math.cos(t * 0.22 + phase) * 0.25;
         beam.material.opacity = 0.08 + Math.abs(Math.sin(t * 0.5 + phase)) * 0.06;
@@ -530,7 +629,7 @@ export function createWorld(scene) {
     ferry.add(hull, deck, funnel);
     ferry.position.set(0, 0, 165);
     scene.add(ferry);
-    world.updatables.push((dt, t) => {
+    world.systems.add('decorative', (dt, t) => {
       ferry.position.x = Math.sin(t * 0.07) * 90;
       ferry.position.y = Math.sin(t * 1.1) * 0.18;
       ferry.rotation.y = Math.cos(t * 0.07) > 0 ? Math.PI : 0;
@@ -549,7 +648,7 @@ export function createWorld(scene) {
     }
     junk.position.set(40, 0, 175);
     scene.add(junk);
-    world.updatables.push((dt, t) => {
+    world.systems.add('decorative', (dt, t) => {
       junk.position.x = 50 + Math.sin(t * 0.045 + 2) * 70;
       junk.position.y = Math.sin(t * 0.9 + 1) * 0.15;
       junk.rotation.y = Math.cos(t * 0.045 + 2) > 0 ? Math.PI : 0;
@@ -643,7 +742,7 @@ export function createWorld(scene) {
     const v = r.make();
     scene.add(v);
     let prog = (rng() + (r.offset || 0)) % 1;
-    world.updatables.push((dt) => {
+    world.systems.add('traffic', (dt) => {
       prog = (prog + dt * r.speed / Math.abs(r.to - r.from)) % 1;
       const c = r.from + (r.to - r.from) * prog;
       if (r.vertical) {
@@ -727,7 +826,7 @@ export function createWorld(scene) {
       g.position.set(px, 0, pz);
       scene.add(g);
     }
-    world.updatables.push((dt, t) => {
+    world.systems.add('decorative', (dt, t) => {
       const phase = t % 14;
       const green = phase > 7;
       const flash = green && phase > 12 && Math.sin(t * 18) > 0;
@@ -788,7 +887,7 @@ export function createWorld(scene) {
         cloths.push({ c, ph: i * 1.4 + lz });
       }
     }
-    world.updatables.push((dt, t) => {
+    world.systems.add('decorative', (dt, t) => {
       for (const { c, ph } of cloths) c.rotation.x = Math.sin(t * 1.6 + ph) * 0.35;
     });
   }
@@ -825,7 +924,7 @@ export function createWorld(scene) {
     const smoke = new THREE.Mesh(new THREE.SphereGeometry(0.5, 8, 8),
       new THREE.MeshBasicMaterial({ color: 0xcccccc, transparent: true, opacity: 0.3 }));
     smoke.position.set(3, 4, 4.4); g.add(smoke);
-    world.updatables.push((dt, t) => {
+    world.systems.add('decorative', (dt, t) => {
       smoke.position.y = 4 + ((t * 0.5) % 2.4);
       smoke.material.opacity = 0.32 - ((t * 0.5) % 2.4) * 0.12;
       smoke.scale.setScalar(1 + ((t * 0.5) % 2.4) * 0.45);
@@ -852,7 +951,7 @@ export function createWorld(scene) {
       new THREE.MeshBasicMaterial({ color: 0xff4040 }));
     blink.position.y = -0.95; heli.add(blink);
     scene.add(heli);
-    world.updatables.push((dt, t) => {
+    world.systems.add('decorative', (dt, t) => {
       const a = t * 0.1;
       heli.position.set(Math.sin(a) * 95, 36 + Math.sin(t * 0.7) * 1.5, 150 + Math.cos(a) * 38);
       heli.rotation.y = -a;                  // nose along the flight path
@@ -878,7 +977,7 @@ export function createWorld(scene) {
       scene.add(g);
       gulls.push({ g, r: 9 + i * 3.5, h: 9 + (i % 3) * 2.5, sp: 0.5 + (i % 2) * 0.22, ph: i * 1.3 });
     }
-    world.updatables.push((dt, t) => {
+    world.systems.add('decorative', (dt, t) => {
       for (const u of gulls) {
         const a = t * u.sp + u.ph;
         u.g.position.set(Math.cos(a) * u.r, u.h + Math.sin(t * 1.2 + u.ph) * 0.8, 132 + Math.sin(a) * u.r * 0.55);
@@ -912,7 +1011,7 @@ export function createWorld(scene) {
         lanterns.push({ g, ph: i * 2 + lz });
       }
     }
-    world.updatables.push((dt, t) => {
+    world.systems.add('decorative', (dt, t) => {
       for (const { g, ph } of lanterns) g.rotation.z = Math.sin(t * 1.3 + ph) * 0.18;
     });
   }
@@ -948,7 +1047,7 @@ export function createWorld(scene) {
     }
     hub.position.set(28, R + 2, 248);          // by the island skyline
     scene.add(hub);
-    world.updatables.push((dt, t) => {
+    world.systems.add('decorative', (dt, t) => {
       wheel.rotation.z = t * 0.12;             // wheel plane faces Kowloon
       for (const { pod, a } of pods) {         // pods hang level as the wheel turns
         const ang = a + t * 0.12;
@@ -987,7 +1086,7 @@ export function createWorld(scene) {
     }
     const head = segs[0];
     world.dragonHead = head;
-    world.updatables.push((dt, t) => {
+    world.systems.add('decorative', (dt, t) => {
       // head snakes along the west pavement of Nathan Rd
       const s = t * 4.5;
       const zz = -40 + (s % 150);

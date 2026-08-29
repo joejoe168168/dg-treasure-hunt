@@ -1,9 +1,11 @@
 // Snapshot every treasure chest spot using the REAL in-game camera angle
 // (girl at the chest, camera 11.5 behind looking north) + collider check.
 import puppeteer from 'puppeteer-core';
+import { browserExecutable } from './browser-path.mjs';
+import { artifactPath } from './test-artifacts.mjs';
 
 const b = await puppeteer.launch({
-  executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+  executablePath: browserExecutable(),
   headless: 'new',
   args: ['--use-gl=angle', '--enable-unsafe-swiftshader'],
 });
@@ -84,7 +86,7 @@ for (let i = 0; i < spots.length; i++) {
     cam.lookAt(s.x, 1.5, s.z - 2.5 + 3);
   }, s);
   await new Promise(r => setTimeout(r, 350));
-  await pg.screenshot({ path: `chest-${String(i).padStart(2, '0')}.png` });
+  await pg.screenshot({ path: artifactPath(`chest-${String(i).padStart(2, '0')}.png`) });
 }
 await b.close();
 console.log('done');

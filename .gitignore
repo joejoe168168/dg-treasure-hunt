@@ -1,8 +1,11 @@
 node_modules/
+dist/
 shot-*.png
 verify-*.png
 scenic-*.png
+chest-*.png
+prop-*.png
+test-artifacts/*.png
 
 # private reference photos — never commit
 dggirls*.png
-package-lock.json

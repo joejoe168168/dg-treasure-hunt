@@ -73,7 +73,7 @@ export const HARD = [
   { cat: 'english', q: '"Raining cats and dogs" means…', a: ['pets falling', 'raining heavily', 'sunny weather', 'a light shower'], c: 1 },
   { cat: 'english', q: '"The match was called off" means it was…', a: ['won', 'cancelled', 'started', 'shortened'], c: 1 },
   { cat: 'english', q: '"___ of the students has a dictionary."', a: ['All', 'Each', 'Both', 'Many'], c: 1 },
-  { cat: 'english', q: 'Which is spelled correctly?', a: ['recieve', 'receive', 'receeve', 'riceive'], c: 1 },
+  { cat: 'english', q: 'Choose the correct spelling for the colour.', a: ['neccessary', 'necessary', 'necesary', 'necessery'], c: 1 },
   { cat: 'english', q: '"By the time we arrived, the show ___."', a: ['starts', 'had started', 'is starting', 'start'], c: 1 },
   { cat: 'english', q: 'She said she ___ tired.', a: ['is', 'was', 'are', 'be'], c: 1 },
   { cat: 'english', q: '"Despite ___ hard, he failed the test."', a: ['work', 'worked', 'working', 'works'], c: 2 },

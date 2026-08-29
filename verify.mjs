@@ -1,8 +1,10 @@
 // Visual verification: dress close-up + mobile emulation.
 import puppeteer from 'puppeteer-core';
+import { browserExecutable } from './browser-path.mjs';
+import { artifactPath } from './test-artifacts.mjs';
 
 const browser = await puppeteer.launch({
-  executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+  executablePath: browserExecutable(),
   headless: 'new',
   args: ['--use-gl=angle', '--enable-unsafe-swiftshader'],
 });
@@ -17,11 +19,11 @@ const browser = await puppeteer.launch({
   await pg.click('#start-btn');
   await new Promise(r => setTimeout(r, 800));
   // morning gameplay view
-  await pg.screenshot({ path: 'verify-morning.png' });
+  await pg.screenshot({ path: artifactPath('verify-morning.png') });
   // toggle to night for comparison
   await pg.click('#time-btn');
   await new Promise(r => setTimeout(r, 400));
-  await pg.screenshot({ path: 'verify-night.png' });
+  await pg.screenshot({ path: artifactPath('verify-night.png') });
   await pg.click('#time-btn');
   await new Promise(r => setTimeout(r, 300));
   await pg.evaluate(() => {
@@ -34,7 +36,7 @@ const browser = await puppeteer.launch({
     camera.lookAt(girl.position.x, 1.4, girl.position.z);
   });
   await new Promise(r => setTimeout(r, 600));
-  await pg.screenshot({ path: 'verify-dress.png' });
+  await pg.screenshot({ path: artifactPath('verify-dress.png') });
   await pg.close();
 }
 
@@ -49,7 +51,7 @@ const browser = await puppeteer.launch({
   pg.on('pageerror', e => errors.push(e.message));
   await pg.goto('http://localhost:8000', { waitUntil: 'networkidle0' });
   await new Promise(r => setTimeout(r, 2500));
-  await pg.screenshot({ path: 'verify-mobile-start.png' });
+  await pg.screenshot({ path: artifactPath('verify-mobile-start.png') });
   await pg.type('#player-name', 'M');
   await pg.tap('#start-btn');
   await new Promise(r => setTimeout(r, 1200));
@@ -66,14 +68,14 @@ const browser = await puppeteer.launch({
       r.top >= 0 && r.bottom <= window.innerHeight && r.left >= 0;
   });
   await new Promise(r => setTimeout(r, 900));
-  await pg.screenshot({ path: 'verify-mobile-play.png' });
+  await pg.screenshot({ path: artifactPath('verify-mobile-play.png') });
   await pg.touchscreen.touchEnd();
   const z1 = await pg.evaluate(() => window.__dg.girl.position.z);
   // joystick drag DOWN on the bottom-RIGHT -> girl should move BACK (z decreases)
   await pg.touchscreen.touchStart(650, 290);
   await pg.touchscreen.touchMove(650, 335);
   await new Promise(r => setTimeout(r, 1200));
-  await pg.screenshot({ path: 'verify-mobile-right-joy.png' });
+  await pg.screenshot({ path: artifactPath('verify-mobile-right-joy.png') });
   await pg.touchscreen.touchEnd();
   const z2 = await pg.evaluate(() => window.__dg.girl.position.z);
   console.log(`joystick base visible on screen: ${joyVis}`);
@@ -81,7 +83,7 @@ const browser = await puppeteer.launch({
   // night mode on mobile (no point lights — must still look good)
   await pg.tap('#time-btn');
   await new Promise(r => setTimeout(r, 500));
-  await pg.screenshot({ path: 'verify-mobile-night.png' });
+  await pg.screenshot({ path: artifactPath('verify-mobile-night.png') });
   const moved = await pg.evaluate(() => window.__dg.girl.position.z);
   console.log('touch-device class:', touchClass, '| girl z after joystick (started -15):', moved.toFixed(1));
   console.log('mobile errors:', errors.length ? errors.join('; ') : 'NONE');

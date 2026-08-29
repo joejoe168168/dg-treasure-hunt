@@ -2,6 +2,8 @@
 // Tiny WebAudio sound engine — no audio files needed.
 // ============================================================
 let ctx = null;
+let effectsVolume = 1;
+let musicVolume = 1;
 
 function ac() {
   if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -9,7 +11,7 @@ function ac() {
   return ctx;
 }
 
-function tone(freq, dur, type = 'sine', vol = 0.18, when = 0, slideTo = null) {
+function tone(freq, dur, type = 'sine', vol = 0.18, when = 0, slideTo = null, channel = 'effects') {
   const a = ac();
   const t0 = a.currentTime + when;
   const osc = a.createOscillator();
@@ -17,7 +19,7 @@ function tone(freq, dur, type = 'sine', vol = 0.18, when = 0, slideTo = null) {
   osc.type = type;
   osc.frequency.setValueAtTime(freq, t0);
   if (slideTo) osc.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
-  gain.gain.setValueAtTime(vol, t0);
+  gain.gain.setValueAtTime(vol * (channel === 'music' ? musicVolume : effectsVolume), t0);
   gain.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
   osc.connect(gain).connect(a.destination);
   osc.start(t0);
@@ -94,8 +96,8 @@ export function startBgm() {
   bgmTimer = setInterval(() => {
     if (bgmMuted) return;
     const note = MELODY[bgmStep % MELODY.length];
-    if (note) tone(note, 0.32, 'triangle', 0.045);
-    if (bgmStep % 8 === 0) tone(BASS[(bgmStep / 8 | 0) % BASS.length], 1.6, 'sine', 0.05);
+    if (note) tone(note, 0.32, 'triangle', 0.045, 0, null, 'music');
+    if (bgmStep % 8 === 0) tone(BASS[(bgmStep / 8 | 0) % BASS.length], 1.6, 'sine', 0.05, 0, null, 'music');
     bgmStep++;
   }, 270);
 }
@@ -103,4 +105,13 @@ export function startBgm() {
 export function toggleBgm() {
   bgmMuted = !bgmMuted;
   return bgmMuted;
+}
+
+export function setMusicVolume(value) { musicVolume = Math.max(0, Math.min(1, Number(value))); }
+export function setEffectsVolume(value) { effectsVolume = Math.max(0, Math.min(1, Number(value))); }
+export function stopAudio() {
+  if (bgmTimer) clearInterval(bgmTimer);
+  bgmTimer = null;
+  ctx?.close();
+  ctx = null;
 }

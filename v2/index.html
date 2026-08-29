@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-HK">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <meta name="theme-color" content="#071a2d">
+  <title>DG Discovery Museum · V2</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <canvas id="scene"></canvas>
+
+  <section id="welcome" class="screen">
+    <div class="welcome-copy">
+      <div class="eyebrow">DGJS · JORDAN / TSIM SHA TSUI</div>
+      <h1>探索香港，<br><span>點亮博物館。</span></h1>
+      <p>在全新的海濱探索館出發，暢遊大型尖沙咀地圖，完成十六個地標任務，為博物館尋回失落的星光。</p>
+      <div class="features">
+        <span>✦ 導航式探索</span><span>✦ 知識挑戰</span><span>✦ 博物館收藏</span>
+      </div>
+      <label class="name-label" for="playerName">探險家名字 Explorer name</label>
+      <div class="start-row">
+        <input id="playerName" maxlength="14" placeholder="你的名字">
+        <button id="start">進入探索館 <b>→</b></button>
+      </div>
+      <p class="controls">↑ / W 永遠向北 · 方向鍵移動 · 拖曳旋轉視角 · R 鏡頭向北 · E 互動</p>
+    </div>
+    <aside class="mission-preview">
+      <div class="preview-number">16</div>
+      <p>本次探索任務</p>
+      <h2>維港星光之旅</h2>
+      <div class="route"><i></i><span>探索館與太空館</span><i></i><span>彌敦道地標群</span><i></i><span>維港文化藝術區</span></div>
+    </aside>
+  </section>
+
+  <main id="gameUI" class="hidden">
+    <header class="topbar">
+      <div class="brand"><b>DG</b><span>DISCOVERY<br>MUSEUM</span></div>
+      <div class="progress"><span id="chapter">CHAPTER 1 · 海濱展區</span><div><i id="progressFill"></i></div></div>
+      <div class="collection"><span id="scoreCount">SCORE 0</span><span id="coinCount">● 0</span><span id="starCount">★ 0</span></div>
+      <button id="time" aria-label="Toggle day or night">☀</button>
+      <button id="sound" aria-label="Toggle sound">♪</button>
+    </header>
+    <section class="objective-card">
+      <small>目前任務 CURRENT QUEST</small>
+      <h2 id="objective">前往中央星圖</h2>
+      <p id="objectiveHint">跟隨地面的金色光線</p>
+      <div class="objective-progress"><span id="objectiveCount">0 / 3</span><div><i id="objectiveFill"></i></div></div>
+    </section>
+    <div class="compass"><span>N</span><i id="compassNeedle"></i></div>
+    <canvas id="minimap" width="220" height="260" aria-label="Tsim Sha Tsui map"></canvas>
+    <button id="interact" class="hidden"><kbd>E</kbd><span id="interactText">互動</span></button>
+    <div id="toast" class="toast hidden"></div>
+    <div id="joystick"><div id="stick"></div></div>
+  </main>
+
+  <section id="quiz" class="screen modal hidden">
+    <div class="quiz-card">
+      <div class="quiz-top"><span id="quizPlace">香港太空館</span><b id="quizStep">1 / 1</b></div>
+      <div class="quiz-icon">✦</div>
+      <small>KNOWLEDGE SCAN · 知識掃描</small>
+      <h2 id="question"></h2>
+      <div id="answers"></div>
+      <p id="feedback"></p>
+    </div>
+  </section>
+
+  <section id="complete" class="screen modal hidden">
+    <div class="complete-card">
+      <div class="complete-star">★</div>
+      <small>EXHIBITION RESTORED</small>
+      <h1>維港星光重新亮起！</h1>
+      <p><b id="finalName"></b> 已完成第一章，並把十六件香港故事帶回探索館。</p>
+      <div class="stats"><div><b>16</b><span>地標</span></div><div><b id="finalScore">0</b><span>分數</span></div><div><b>1</b><span>新展覽</span></div></div>
+      <button id="replay">再次探索</button>
+      <a href="../">返回原版比較 ↗</a>
+    </div>
+  </section>
+
+  <div id="loading"><b>DG</b><span>正在開啟探索館…</span></div>
+  <script>
+    if (location.protocol === 'file:') {
+      const loading = document.getElementById('loading');
+      loading.innerHTML = '<div class="launch-help"><b>DG</b><h2>請使用 V2 啟動器</h2><p>瀏覽器基於安全理由，不能直接從檔案載入 3D 遊戲。請關閉此頁，然後雙擊專案內的 <strong>START-V2.cmd</strong>。</p><code>dg-treasure-hunt\\START-V2.cmd</code></div>';
+    }
+  </script>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

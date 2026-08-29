@@ -6,24 +6,16 @@
 <title>DG Treasure Hunt · 尖沙咀尋寶記</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8E%81%3C/text%3E%3C/svg%3E">
 <link rel="stylesheet" href="css/style.css">
-<script type="importmap">
-{
-  "imports": {
-    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
-  }
-}
-</script>
 </head>
 <body>
   <canvas id="game-canvas"></canvas>
 
   <!-- ============ START SCREEN ============ -->
-  <div id="start-screen" class="overlay">
+  <div id="start-screen" class="overlay" role="dialog" aria-modal="true" aria-labelledby="game-title">
     <div class="start-card">
       <div class="logo-area">
         <div class="logo-badge">DG</div>
-        <h1>尖沙咀尋寶記</h1>
+        <h1 id="game-title">尖沙咀尋寶記</h1>
         <h2>Tsim Sha Tsui Treasure Hunt</h2>
       </div>
       <p class="intro-text">
@@ -34,7 +26,7 @@
       </p>
       <div class="name-entry">
         <label for="player-name">輸入你的名字 Enter your name</label>
-        <input id="player-name" type="text" maxlength="14" placeholder="e.g. Hailey" autocomplete="off">
+        <input id="player-name" type="text" maxlength="14" placeholder="e.g. Hailey" autocomplete="off" autofocus>
         <label>選擇難度 Difficulty</label>
         <div id="difficulty-row">
           <button class="diff-btn selected" data-diff="easy">🟢 初級<small>P1–P2 · 15s</small></button>
@@ -46,15 +38,27 @@
           <button class="diff-btn time-btn selected" data-time="morning">🌅 早晨<small>Morning</small></button>
           <button class="diff-btn time-btn" data-time="night">🌃 夜晚<small>Night</small></button>
         </div>
+        <label>遊戲模式 Session mode</label>
+        <div id="session-row" class="session-row">
+          <button class="diff-btn selected" data-session="full">🗺️ 完整<small>16 地標</small></button>
+          <button class="diff-btn" data-session="quick">⚡ 快線<small>3 寶箱 · 10 分鐘</small></button>
+          <button class="diff-btn" data-session="practice">📚 三科練習<small>數學 · 英文 · 中文</small></button>
+          <button class="diff-btn" data-session="explore">🌿 探索<small>無目標</small></button>
+          <button class="diff-btn" data-session="teacher">👩‍🏫 教師<small>無計時</small></button>
+        </div>
         <button id="start-btn" class="big-btn" disabled>開始遊戲 START!</button>
       </div>
       <div class="start-leaderboard">
         <h3>🏆 排行榜 Leaderboard</h3>
         <ol id="start-lb-list"></ol>
       </div>
+      <div class="controls-hint" style="margin-bottom:5px;color:#6f78a8">
+        🖱 Click or tap a chest, schoolmate, puppy, lucky cat or MTR entrance to interact
+      </div>
       <div class="controls-hint">
         🖥️ WASD / 方向鍵移動 · E 開寶箱 &nbsp;|&nbsp; 📱 左搖桿移動 · 右按鈕開寶箱
       </div>
+      <div class="version-label">Version 1.2.0 · Development candidate</div>
     </div>
   </div>
 
@@ -64,25 +68,71 @@
       <div class="hud-pill" id="hud-name">⭐ —</div>
       <div class="hud-pill" id="hud-score">分數 Score: 0</div>
       <div class="hud-pill" id="hud-chests">寶箱 🎁 0 / 16</div>
+      <div class="hud-pill hidden" id="hud-session-time">⏱ 10:00</div>
       <div class="hud-pill small" id="hud-coins">💰 0 &nbsp;⭐ 0</div>
       <button class="hud-pill small" id="mute-btn" title="音樂開關 Music on/off">🔊 音樂</button>
       <button class="hud-pill small" id="time-btn" title="日夜切換 Day / Night">🌃 夜晚</button>
+      <button class="hud-pill small" id="pause-btn" title="暫停及設定 Pause and settings">⚙️ 設定</button>
     </div>
-    <canvas id="minimap" width="180" height="180"></canvas>
+    <canvas id="minimap" width="180" height="180" role="img" aria-label="尖沙咀小地圖，金點是未開寶箱，粉紅點是玩家。"></canvas>
+    <div id="objective-guide" class="hidden" aria-live="polite">
+      <span id="objective-arrow">⬆</span>
+      <span><b id="objective-name">下一個寶箱</b><small id="objective-distance"></small></span>
+      <button id="hint-btn" title="顯示提示 Show hint" aria-label="顯示最近寶箱提示 Show nearest chest hint">💡</button>
+    </div>
+    <div id="tutorial-card" class="hidden" aria-live="polite">
+      <span id="tutorial-progress">1 / 3</span>
+      <b id="tutorial-title">先試吓行路 Move around</b>
+      <small id="tutorial-text">用 WASD、方向鍵或畫面搖桿移動。</small>
+      <button id="tutorial-skip">跳過 Skip</button>
+    </div>
     <div id="interact-prompt" class="hidden">
       <span class="key-cap">E</span> 開寶箱 Open Chest!
     </div>
-    <div id="toast" class="hidden"></div>
+    <div id="toast" class="hidden" role="status" aria-live="polite"></div>
+    <div id="screen-reader-announcer" class="sr-only" role="status" aria-live="assertive"></div>
 
     <!-- mobile controls -->
     <div id="joystick-zone">
       <div id="joystick-base"><div id="joystick-knob"></div></div>
     </div>
-    <button id="action-btn" class="hidden">🎁</button>
+    <button id="action-btn" class="hidden" aria-label="互動 Interact">🎁</button>
+  </div>
+
+  <div id="settings-screen" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div class="settings-card">
+      <h2 id="settings-title">⚙️ 暫停及設定<br><small>Pause & Settings</small></h2>
+      <label><input id="reduced-motion-setting" type="checkbox"> 減少動畫 Reduced motion</label>
+      <label><input id="smooth-camera-setting" type="checkbox" checked> 柔順鏡頭 Smooth camera</label>
+      <label>🎥 鏡頭靈敏度 Camera sensitivity
+        <input id="camera-sensitivity-setting" type="range" min="0.3" max="2" step="0.1" value="1">
+      </label>
+      <label><input id="invert-camera-setting" type="checkbox"> 反轉上下 Invert vertical</label>
+      <label><input id="fixed-camera-setting" type="checkbox"> 兒童固定鏡頭 Fixed camera</label>
+      <label>🎵 音樂 Music <input id="music-volume-setting" type="range" min="0" max="1" step="0.1" value="1"></label>
+      <label>🔔 音效 Effects <input id="effects-volume-setting" type="range" min="0" max="1" step="0.1" value="1"></label>
+      <label>語言 Language
+        <select id="language-setting"><option value="bilingual">中英雙語</option><option value="zh-HK">繁體中文</option><option value="en">English</option></select>
+      </label>
+      <label>文字大小 Text size
+        <select id="text-size-setting"><option value="standard">標準 Standard</option><option value="large">大 Large</option></select>
+      </label>
+      <label>畫質 Quality
+        <select id="quality-setting"><option value="auto">自動 Auto</option><option value="high">高 High</option><option value="low">低 Low</option></select>
+      </label>
+      <label><input id="online-scores-setting" type="checkbox" checked> 使用網上排行榜 Online leaderboard</label>
+      <small class="privacy-note">關閉後所有分數只會留在這部裝置。Turn off to keep scores on this device only.</small>
+      <section class="mastery-summary" aria-labelledby="mastery-title">
+        <h3 id="mastery-title">📚 學習進度 Learning progress</h3>
+        <div id="mastery-summary-list"></div>
+      </section>
+      <button id="camera-reset-btn" class="secondary-btn">🎥 重設鏡頭 Reset camera</button>
+      <button id="resume-btn" class="big-btn">繼續遊戲 Resume</button>
+    </div>
   </div>
 
   <!-- ============ QUIZ ============ -->
-  <div id="quiz-screen" class="overlay hidden">
+  <div id="quiz-screen" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="quiz-question">
     <div class="quiz-card">
       <div class="quiz-head">
         <span id="quiz-category" class="cat-badge">數學 Math</span>
@@ -90,13 +140,13 @@
       </div>
       <div class="timer-track"><div id="timer-bar"></div></div>
       <div id="quiz-question">Question text</div>
-      <div id="quiz-answers"></div>
-      <div id="quiz-feedback" class="hidden"></div>
+      <div id="quiz-answers" role="group" aria-labelledby="quiz-question"></div>
+      <div id="quiz-feedback" class="hidden" role="status" aria-live="assertive"></div>
     </div>
   </div>
 
   <!-- ============ QUIZ RESULT ============ -->
-  <div id="chest-result" class="overlay hidden">
+  <div id="chest-result" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="chest-result-title">
     <div class="result-card">
       <div id="chest-result-emoji">🎉</div>
       <h2 id="chest-result-title">Treasure Found!</h2>
@@ -106,10 +156,10 @@
   </div>
 
   <!-- ============ VICTORY ============ -->
-  <div id="victory-screen" class="overlay hidden">
+  <div id="victory-screen" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="victory-title">
     <div class="result-card victory">
       <div class="victory-stars">🌟🏆🌟</div>
-      <h1>尋寶完成！Treasure Hunt Complete!</h1>
+      <h1 id="victory-title">尋寶完成！Treasure Hunt Complete!</h1>
       <p id="victory-stats"></p>
       <div class="start-leaderboard">
         <h3>🏆 排行榜 Leaderboard</h3>
@@ -119,7 +169,7 @@
     </div>
   </div>
 
-  <div id="orientation-hint" class="hidden">📱 橫放手機效果更佳 Rotate for best experience</div>
+  <div id="orientation-hint" class="hidden" role="status">📱 橫放手機效果更佳 Rotate for best experience</div>
 
   <script type="module" src="js/main.js"></script>
 </body>

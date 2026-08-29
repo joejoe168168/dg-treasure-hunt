@@ -6,9 +6,9 @@ import { createGirl, animateGirl } from './character.js';
 import {
   createWorld, CHEST_SPOTS, STAR_SPOTS, GIFT_SPOTS, FOOD_STALLS, NPC_SPOTS, ROADS, MAP,
 } from './world.js';
-import { pickQuestions, resetQuestionPool, CATEGORIES, DIFFICULTIES } from './questions.js';
-import { sfx, startBgm, toggleBgm } from './audio.js';
-import { IS_TOUCH, LOW_FX, pointLight } from './quality.js';
+import { resetQuestionPool, recordQuestionResult, loadTopicMastery, CATEGORIES, DIFFICULTIES } from './questions.js';
+import { sfx, startBgm, toggleBgm, setMusicVolume, setEffectsVolume, stopAudio } from './audio.js';
+import { IS_TOUCH, LOW_FX, INITIAL_PRESET, QUALITY_PREFERENCE, chooseQualityPreset, rendererCapabilities, pointLight } from './quality.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
@@ -16,6 +16,23 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import {
   saveScore, loadBoard, renderBoard, fetchRemoteBoard, submitScore,
 } from './leaderboard.js';
+import { InputController, INPUT_ACTIONS } from './systems/input-controller.js';
+import { InteractionSystem } from './systems/interaction-system.js';
+import { GAME_CONFIG, STORAGE_KEYS } from './app/config.js';
+import { createGameState } from './app/game-state.js';
+import {
+  configureSession, pauseSessionClock, resumeSessionClock, SESSION_MODES,
+  sessionHasExpired, sessionSecondsRemaining, startSessionClock,
+} from './app/session-modes.js';
+import { scoreCorrectAnswer, scoreMissedAnswer, perfectChestBonus } from './systems/scoring.js';
+import { completeChest, missionStatus } from './systems/mission-system.js';
+import { QuizSystem } from './systems/quiz-system.js';
+import { QuizView } from './ui/quiz-view.js';
+import { GameHud } from './ui/hud.js';
+import { DialogAccessibility } from './ui/dialog-accessibility.js';
+import { SpatialHash } from './systems/spatial-hash.js';
+import { normalizePlayerName } from './app/leaderboard-validation.js';
+import { disposeObject3D } from './systems/three-dispose.js';
 
 // ---------------- DOM ----------------
 const $ = id => document.getElementById(id);
@@ -24,10 +41,17 @@ const startScreen = $('start-screen'), hud = $('hud');
 const quizScreen = $('quiz-screen'), chestResult = $('chest-result');
 const victoryScreen = $('victory-screen');
 const nameInput = $('player-name'), startBtn = $('start-btn');
-const interactPrompt = $('interact-prompt'), actionBtn = $('action-btn');
-const toastEl = $('toast');
-
 const isTouch = IS_TOUCH;
+const tutorialCard = $('tutorial-card');
+const dialogAccessibility = new DialogAccessibility(document);
+const hudView = new GameHud({ document, isTouch, map: MAP, roads: ROADS });
+const interactPrompt = hudView.interactPrompt, actionBtn = hudView.actionButton;
+const quizView = new QuizView({
+  screen: quizScreen, result: chestResult, category: $('quiz-category'), progress: $('quiz-progress'),
+  question: $('quiz-question'), answers: $('quiz-answers'), feedback: $('quiz-feedback'), timerBar: $('timer-bar'),
+  resultEmoji: $('chest-result-emoji'), resultTitle: $('chest-result-title'), resultText: $('chest-result-text'),
+});
+
 if (isTouch) document.body.classList.add('touch-device');
 
 // ---------------- renderer / scene / camera ----------------
@@ -35,18 +59,21 @@ if (isTouch) document.body.classList.add('touch-device');
 const renderer = new THREE.WebGLRenderer({
   canvas, antialias: !LOW_FX, powerPreference: 'high-performance',
 });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, LOW_FX ? 1.5 : 2));
+const rendererPreset = chooseQualityPreset(renderer, QUALITY_PREFERENCE);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, rendererPreset.pixelRatio));
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.shadowMap.enabled = !LOW_FX;
+renderer.shadowMap.enabled = rendererPreset.shadows;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = LOW_FX ? 1.05 : 0.92;
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 600);
 
 // desktop only: bloom post-processing for that neon HK glow
 let composer = null;
-if (!LOW_FX) {
+if (rendererPreset.bloom) {
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
   composer.addPass(new UnrealBloomPass(
@@ -60,9 +87,14 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
   composer?.setSize(window.innerWidth, window.innerHeight);
 });
+const gpuCapabilities = rendererCapabilities(renderer);
+document.documentElement.dataset.qualityRuntime = rendererPreset.name;
+let pageHidden = document.hidden;
+document.addEventListener('visibilitychange', () => { pageHidden = document.hidden; });
 
 // ---------------- world & player ----------------
 const world = createWorld(scene);
+world.systems.start();
 const girl = createGirl();
 girl.scale.setScalar(1.45);
 girl.position.set(0, 0, -15);   // start on Nathan Road near Kowloon Park
@@ -77,7 +109,9 @@ boostRing.position.y = 0.06;
 boostRing.visible = false;
 girl.add(boostRing);
 
-const CAM_OFFSET = new THREE.Vector3(0, 9.5, -11.5);
+const CAM_OFFSET = new THREE.Vector3(
+  GAME_CONFIG.cameraOffset.x, GAME_CONFIG.cameraOffset.y, GAME_CONFIG.cameraOffset.z);
+const cameraOrbit = { yaw: 0, pitch: 0, dragging: false, x: 0, y: 0 };
 camera.position.copy(girl.position).add(CAM_OFFSET);
 camera.lookAt(girl.position);
 
@@ -243,6 +277,7 @@ const foodStalls = FOOD_STALLS.map((f, i) => {
   world.colliders.push({ minX: f.x - 1.2, maxX: f.x + 1.2, minZ: f.z - 0.8, maxZ: f.z + 0.8 });
   return { group: g, ...f, eaten: false, foodMesh: food };
 });
+const colliderIndex = new SpatialHash(12).rebuild(world.colliders);
 
 // ---------------- puppy companion ----------------
 function makeDog() {
@@ -606,42 +641,259 @@ function updateBursts(dt) {
 }
 
 // ---------------- game state ----------------
-const state = {
-  phase: 'start',         // start | play | quiz | result | victory
-  playerName: '',
-  difficulty: 'easy',
-  score: 0,
-  coinsCollected: 0,
-  starsCollected: 0,
-  chestsOpened: 0,
-  streak: 0,              // consecutive correct answers across chests
-  startTime: 0,
-  nearChest: null,
-  nearCat: null,
-  nearMtr: null,
-  nearNpc: null,
-  nearDog: false,
-  boostUntil: 0,
-  hitInvulnUntil: 0,
-  dizzyUntil: 0,
-  morning: true,
-};
+const state = createGameState();
 
-// ---------------- input ----------------
-const keys = {};
-window.addEventListener('keydown', e => {
-  keys[e.code] = true;
-  if (e.code === 'KeyE' && state.phase === 'play') doInteract();
+// ---------------- persistent settings and first-session guide ----------------
+const settings = (() => {
+  try {
+    return { reducedMotion: false, smoothCamera: true, cameraSensitivity: 1,
+      invertCamera: false, fixedCamera: false, musicVolume: 1, effectsVolume: 1,
+      language: 'bilingual', textSize: 'standard', quality: 'auto', onlineScores: true,
+      ...JSON.parse(localStorage.getItem(STORAGE_KEYS.settings) || '{}') };
+  } catch { return { reducedMotion: false, smoothCamera: true, cameraSensitivity: 1,
+    invertCamera: false, fixedCamera: false, musicVolume: 1, effectsVolume: 1,
+    language: 'bilingual', textSize: 'standard', quality: 'auto', onlineScores: true }; }
+})();
+function applySettings() {
+  document.body.classList.toggle('reduced-motion', settings.reducedMotion);
+  $('reduced-motion-setting').checked = settings.reducedMotion;
+  $('smooth-camera-setting').checked = settings.smoothCamera;
+  $('camera-sensitivity-setting').value = settings.cameraSensitivity;
+  $('invert-camera-setting').checked = settings.invertCamera;
+  $('fixed-camera-setting').checked = settings.fixedCamera;
+  $('music-volume-setting').value = settings.musicVolume;
+  $('effects-volume-setting').value = settings.effectsVolume;
+  $('language-setting').value = settings.language;
+  $('text-size-setting').value = settings.textSize;
+  $('quality-setting').value = settings.quality;
+  $('online-scores-setting').checked = settings.onlineScores;
+  document.documentElement.dataset.language = settings.language;
+  document.body.dataset.textSize = settings.textSize;
+  document.documentElement.dataset.quality = settings.quality;
+  setMusicVolume(settings.musicVolume);
+  setEffectsVolume(settings.effectsVolume);
+  localStorage.setItem(STORAGE_KEYS.settings, JSON.stringify(settings));
+}
+applySettings();
+const syncRemoteScore = (...args) => settings.onlineScores ? submitScore(...args) : Promise.resolve(null);
+
+const tutorialSteps = [
+  ['先試吓行路 Move around', '用 WASD、方向鍵或畫面搖桿移動。'],
+  ['收集街頭寶物 Collect', '小地圖金點係寶箱；行近金幣、金星、禮物或小食會自動收集。'],
+  ['探索及互動 Interact', '行近寶箱或人物，按 E、按互動鍵，或者直接點擊。'],
+];
+let tutorialStep = -1;
+function renderTutorial() {
+  if (tutorialStep < 0 || tutorialStep >= tutorialSteps.length) {
+    tutorialCard.classList.add('hidden');
+    return;
+  }
+  $('tutorial-progress').textContent = `${tutorialStep + 1} / ${tutorialSteps.length}`;
+  $('tutorial-title').textContent = tutorialSteps[tutorialStep][0];
+  $('tutorial-text').textContent = tutorialSteps[tutorialStep][1];
+  tutorialCard.classList.remove('hidden');
+}
+function beginTutorial() {
+  if (localStorage.getItem(STORAGE_KEYS.tutorial) === 'done') return;
+  tutorialStep = 0;
+  renderTutorial();
+}
+function advanceTutorial(expectedStep) {
+  if (tutorialStep !== expectedStep) return;
+  tutorialStep++;
+  if (tutorialStep >= tutorialSteps.length) {
+    localStorage.setItem(STORAGE_KEYS.tutorial, 'done');
+    toast('✅ 教學完成 Tutorial complete! 開始尋寶啦！', 3000);
+  }
+  renderTutorial();
+}
+$('tutorial-skip').addEventListener('click', () => {
+  localStorage.setItem(STORAGE_KEYS.tutorial, 'done');
+  tutorialStep = -1;
+  renderTutorial();
 });
-window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+function setPaused(paused) {
+  if (paused && state.phase !== 'play') return;
+  if (!paused && state.phase !== 'paused') return;
+  state.phase = paused ? 'paused' : 'play';
+  if (paused) { input?.resetJoystick(); pauseSessionClock(state); renderMasterySummary(); }
+  else resumeSessionClock(state);
+  $('settings-screen').classList.toggle('hidden', !paused);
+}
+function renderMasterySummary() {
+  const mastery = loadTopicMastery();
+  const topics = [
+    ['number-and-operations', '數學 Maths'],
+    ['language-and-vocabulary', '英文 English'],
+    ['reading-and-language', '中文 Chinese'],
+    ['hong-kong-and-world-knowledge', '常識 General'],
+  ];
+  $('mastery-summary-list').replaceChildren(...topics.map(([key, label]) => {
+    const stats = mastery[key] || { correct: 0, attempts: 0 };
+    const row = document.createElement('div'); row.className = 'mastery-row';
+    const accuracy = stats.attempts ? Math.round(stats.correct / stats.attempts * 100) : 0;
+    row.textContent = `${label}: ${stats.attempts ? `${accuracy}% (${stats.correct}/${stats.attempts})` : '未有紀錄 No attempts'}`;
+    return row;
+  }));
+}
+function resetCamera() {
+  cameraOrbit.yaw = 0;
+  cameraOrbit.pitch = 0;
+  camera.position.copy(girl.position).add(CAM_OFFSET);
+  camera.lookAt(girl.position.x, girl.position.y + 1.5, girl.position.z + 3);
+  toast('🎥 鏡頭已重設 Camera reset');
+}
+$('pause-btn').addEventListener('click', () => setPaused(true));
+$('resume-btn').addEventListener('click', () => setPaused(false));
+$('reduced-motion-setting').addEventListener('change', event => {
+  settings.reducedMotion = event.target.checked; applySettings();
+});
+$('smooth-camera-setting').addEventListener('change', event => {
+  settings.smoothCamera = event.target.checked; applySettings();
+});
+$('camera-sensitivity-setting').addEventListener('input', event => {
+  settings.cameraSensitivity = Number(event.target.value); applySettings();
+});
+$('invert-camera-setting').addEventListener('change', event => {
+  settings.invertCamera = event.target.checked; applySettings();
+});
+$('fixed-camera-setting').addEventListener('change', event => {
+  settings.fixedCamera = event.target.checked; resetCamera(); applySettings();
+});
+$('music-volume-setting').addEventListener('input', event => {
+  settings.musicVolume = Number(event.target.value); applySettings();
+});
+$('effects-volume-setting').addEventListener('input', event => {
+  settings.effectsVolume = Number(event.target.value); applySettings();
+});
+$('language-setting').addEventListener('change', event => {
+  settings.language = event.target.value; applySettings();
+});
+$('text-size-setting').addEventListener('change', event => {
+  settings.textSize = event.target.value; applySettings();
+});
+$('quality-setting').addEventListener('change', event => {
+  settings.quality = event.target.value; applySettings();
+  toast('畫質設定會在下次開啟遊戲生效 · Quality applies on next load');
+});
+$('online-scores-setting').addEventListener('change', event => {
+  settings.onlineScores = event.target.checked; applySettings();
+  toast(settings.onlineScores ? '🌍 網上排行榜已開啟' : '🔒 分數只會儲存在這部裝置');
+});
+$('camera-reset-btn').addEventListener('click', resetCamera);
 
 function doInteract() {
-  if (state.nearChest) openChest(state.nearChest);
-  else if (state.nearNpc) talkToNpc(state.nearNpc);
-  else if (state.nearDog && !dogFollowing) adoptDog();
-  else if (state.nearCat) rubLuckyCat();
-  else if (state.nearMtr != null) rideMtr();
+  notePlayerActivity();
+  if (state.nearChest) interactions.activateByRef('chest', state.nearChest);
+  else if (state.nearNpc) interactions.activateByRef('npc', state.nearNpc);
+  else if (state.nearDog && !dogFollowing) interactions.activateByRef('dog', dog);
+  else if (state.nearCat) interactions.activateByRef('cat', luckyCat);
+  else if (state.nearMtr != null) interactions.activateByRef('mtr', state.nearMtr);
 }
+
+// ---------------- input ----------------
+const input = new InputController({
+  onAction: action => {
+    if (action === INPUT_ACTIONS.interact) doInteract();
+    else if (action === INPUT_ACTIONS.pause) setPaused(state.phase === 'play');
+    else if (action === INPUT_ACTIONS.cameraReset) resetCamera();
+  },
+  canAction: action => action === INPUT_ACTIONS.pause
+    ? state.phase === 'play' || state.phase === 'paused'
+    : state.phase === 'play',
+});
+
+// ---------------- direct mouse / touch interaction ----------------
+// Every interactive model carries its own root marker, so a ray hit on any
+// child mesh (lid, arm, hair, etc.) resolves to the correct gameplay object.
+const interactions = new InteractionSystem({
+  canvas, camera, player: girl,
+  isEnabled: () => state.phase === 'play',
+  onTooFar: (_entry, distance) => toast(`行近一點再互動 · Move closer (${Math.ceil(distance)}m)`, 2200),
+});
+chests.forEach(ch => interactions.register(ch, 'chest', ch, {
+  distance: GAME_CONFIG.interactionDistance.chest,
+  isCompleted: () => ch.userData.opened || ch.userData.active === false,
+  activate: () => openChest(ch),
+}));
+npcs.forEach(npc => interactions.register(npc.model, 'npc', npc, {
+  distance: GAME_CONFIG.interactionDistance.npc,
+  activate: () => talkToNpc(npc),
+}));
+interactions.register(dog, 'dog', dog, {
+  distance: GAME_CONFIG.interactionDistance.dog,
+  isCompleted: () => dogFollowing,
+  activate: adoptDog,
+});
+interactions.register(luckyCat, 'cat', luckyCat, {
+  distance: GAME_CONFIG.interactionDistance.cat,
+  isCompleted: () => catRubbed,
+  activate: rubLuckyCat,
+});
+MTR_STATIONS.forEach((station, i) => {
+  // Transparent ray volume follows the visible entrance built in landmarks.js.
+  const hitArea = new THREE.Mesh(
+    new THREE.BoxGeometry(5.2, 4.5, 4.6),
+    new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }));
+  hitArea.position.set(station.x, 2.1, station.z);
+  scene.add(hitArea);
+  interactions.register(hitArea, 'mtr', i, {
+    distance: GAME_CONFIG.interactionDistance.mtr,
+    activate: () => { state.nearMtr = i; rideMtr(); },
+  });
+});
+
+const hoverRing = new THREE.Mesh(
+  new THREE.RingGeometry(.72, .9, 28),
+  new THREE.MeshBasicMaterial({ color: 0xffee96, transparent: true, opacity: .9, side: THREE.DoubleSide, depthWrite: false }));
+hoverRing.rotation.x = -Math.PI / 2;
+hoverRing.position.y = .09;
+hoverRing.visible = false;
+scene.add(hoverRing);
+
+function pointerTarget(clientX, clientY) {
+  return interactions.pick(clientX, clientY);
+}
+
+function activatePointerTarget(target) {
+  notePlayerActivity();
+  return interactions.activate(target).status !== 'disabled';
+}
+
+let canvasPress = null;
+canvas.addEventListener('contextmenu', event => event.preventDefault());
+canvas.addEventListener('pointerdown', e => {
+  if (e.button === 2 && !settings.fixedCamera) {
+    cameraOrbit.dragging = true; cameraOrbit.x = e.clientX; cameraOrbit.y = e.clientY;
+    canvas.setPointerCapture(e.pointerId);
+    return;
+  }
+  canvasPress = { x: e.clientX, y: e.clientY };
+});
+canvas.addEventListener('pointerup', e => {
+  if (e.button === 2) { cameraOrbit.dragging = false; return; }
+  if (!canvasPress || Math.hypot(e.clientX - canvasPress.x, e.clientY - canvasPress.y) > 10) return;
+  activatePointerTarget(pointerTarget(e.clientX, e.clientY));
+  canvasPress = null;
+});
+canvas.addEventListener('pointermove', e => {
+  if (cameraOrbit.dragging && !settings.fixedCamera) {
+    const scale = 0.004 * settings.cameraSensitivity;
+    cameraOrbit.yaw -= (e.clientX - cameraOrbit.x) * scale;
+    cameraOrbit.pitch += (e.clientY - cameraOrbit.y) * scale * (settings.invertCamera ? -1 : 1);
+    cameraOrbit.pitch = THREE.MathUtils.clamp(cameraOrbit.pitch, -0.55, 0.65);
+    cameraOrbit.x = e.clientX; cameraOrbit.y = e.clientY;
+    return;
+  }
+  if (isTouch || state.phase !== 'play') return;
+  const target = pointerTarget(e.clientX, e.clientY);
+  canvas.classList.toggle('can-interact', !!target);
+  hoverRing.visible = !!target;
+  if (target) hoverRing.position.set(target.root.position.x, .09, target.root.position.z);
+});
+canvas.addEventListener('pointerleave', () => { canvas.classList.remove('can-interact'); hoverRing.visible = false; });
+interactPrompt.addEventListener('click', () => { if (state.phase === 'play') doInteract(); });
 
 function rubLuckyCat() {
   if (catRubbed) {
@@ -649,6 +901,7 @@ function rubLuckyCat() {
     return;
   }
   catRubbed = true;
+  advanceTutorial(2);
   const bonus = [28, 38, 58, 88][Math.floor(Math.random() * 4)];
   state.score += bonus;
   state.catWaveFast = performance.now() + 3000;
@@ -662,6 +915,7 @@ function rubLuckyCat() {
 
 function adoptDog() {
   dogFollowing = true;
+  advanceTutorial(2);
   state.score += 30;
   sfx.bark();
   sparkleBurst(dog.position, 0xc89058);
@@ -671,53 +925,26 @@ function adoptDog() {
   updateHUD();
 }
 
-// virtual floating joystick — the stick appears under the finger.
-// The touch point itself is the stick centre (joy.cx/cy), and the
-// base circle is positioned in ZONE coordinates, not viewport ones.
-const joy = { active: false, dx: 0, dy: 0, cx: 0, cy: 0 };
 const joyZone = $('joystick-zone'), joyBase = $('joystick-base'), joyKnob = $('joystick-knob');
-joyZone.addEventListener('pointerdown', e => {
-  e.preventDefault();
-  joy.active = true;
-  joy.id = e.pointerId;
-  joy.cx = e.clientX;
-  joy.cy = e.clientY;
-  const zr = joyZone.getBoundingClientRect();
-  joyBase.style.display = 'block';
-  joyBase.style.left = (e.clientX - zr.left - 60) + 'px';
-  joyBase.style.top = (e.clientY - zr.top - 60) + 'px';
-  joyBase.style.bottom = 'auto';
-  joyZone.setPointerCapture(e.pointerId);
+input.bindJoystick({
+  zone: joyZone,
+  base: joyBase,
+  knob: joyKnob,
+  onTap: (x, y) => activatePointerTarget(pointerTarget(x, y)),
 });
-joyZone.addEventListener('pointermove', e => {
-  if (!joy.active || e.pointerId !== joy.id) return;
-  let dx = e.clientX - joy.cx, dy = e.clientY - joy.cy;
-  const len = Math.hypot(dx, dy);
-  if (len > 48) { dx = dx / len * 48; dy = dy / len * 48; }
-  joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
-  joy.dx = dx / 48; joy.dy = dy / 48;
-});
-function joyEnd(e) {
-  if (e.pointerId !== joy.id) return;
-  joy.active = false; joy.dx = joy.dy = 0;
-  joyKnob.style.transform = 'translate(-50%, -50%)';
-  joyBase.style.display = 'none';
-}
-joyZone.addEventListener('pointerup', joyEnd);
-joyZone.addEventListener('pointercancel', joyEnd);
 
 actionBtn.addEventListener('click', () => {
   if (state.phase === 'play') doInteract();
 });
 
 // ---------------- movement & collision ----------------
-const PLAYER_R = 0.45, SPEED = 9;
+const PLAYER_R = GAME_CONFIG.playerRadius, SPEED = GAME_CONFIG.playerSpeed;
 function tryMove(pos, dx, dz) {
   for (const [mx, mz] of [[dx, 0], [0, dz]]) {
     const nx = pos.x + mx, nz = pos.z + mz;
     let blocked = nx < MAP.minX || nx > MAP.maxX || nz < MAP.minZ || nz > MAP.maxZ;
     if (!blocked) {
-      for (const c of world.colliders) {
+      for (const c of colliderIndex.queryPoint(nx, nz, PLAYER_R)) {
         if (nx > c.minX - PLAYER_R && nx < c.maxX + PLAYER_R &&
             nz > c.minZ - PLAYER_R && nz < c.maxZ + PLAYER_R) { blocked = true; break; }
       }
@@ -726,75 +953,11 @@ function tryMove(pos, dx, dz) {
   }
 }
 
-// ---------------- HUD ----------------
-function updateHUD() {
-  $('hud-score').textContent = `分數 Score: ${state.score}`;
-  $('hud-chests').textContent = `寶箱 🎁 ${state.chestsOpened} / ${TOTAL_CHESTS}`;
-  $('hud-coins').innerHTML = `💰 ${state.coinsCollected} &nbsp;⭐ ${state.starsCollected}`;
-}
-let toastTimer = null;
-function toast(msg, ms = 2400) {
-  toastEl.textContent = msg;
-  toastEl.classList.remove('hidden');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => toastEl.classList.add('hidden'), ms);
-}
-
-// ---------------- minimap ----------------
-const mm = $('minimap'), mmCtx = mm.getContext('2d');
-// The camera looks toward +z (the harbour), so on screen "up" is +z and
-// "right" is -x. Flip both axes (a 180° rotation) so the minimap matches
-// what the player sees: walk up → dot moves up.
-function mapToMM(x, z) {
-  return [
-    (MAP.maxX - x) / (MAP.maxX - MAP.minX) * mm.width,
-    (MAP.maxZ - z) / (MAP.maxZ - MAP.minZ) * mm.height,
-  ];
-}
-function drawMinimap() {
-  mmCtx.clearRect(0, 0, mm.width, mm.height);
-  mmCtx.fillStyle = 'rgba(15,18,52,0.9)';
-  mmCtx.fillRect(0, 0, mm.width, mm.height);
-  mmCtx.fillStyle = '#16335e';
-  const [, wy] = mapToMM(0, 124);
-  mmCtx.fillRect(0, 0, mm.width, wy);   // harbour is now at the top
-  mmCtx.strokeStyle = '#4a5170';
-  for (const r of ROADS) {
-    mmCtx.lineWidth = Math.max(2, (r.vertical ? r.w : r.d) / 5);
-    let a, b;
-    if (r.vertical) { a = mapToMM(r.x, r.z - r.d / 2); b = mapToMM(r.x, r.z + r.d / 2); }
-    else { a = mapToMM(r.x - r.w / 2, r.z); b = mapToMM(r.x + r.w / 2, r.z); }
-    mmCtx.beginPath(); mmCtx.moveTo(a[0], a[1]); mmCtx.lineTo(b[0], b[1]); mmCtx.stroke();
-  }
-  for (const it of world.minimapItems) {
-    const [x, y] = mapToMM(it.x, it.z);
-    mmCtx.fillStyle = it.color;
-    mmCtx.fillRect(x - it.r / 2, y - it.r / 2, it.r, it.r);
-  }
-  const pulse = 0.6 + Math.sin(performance.now() / 250) * 0.4;
-  for (const ch of chests) {
-    if (ch.userData.opened) continue;
-    const [x, y] = mapToMM(ch.position.x, ch.position.z);
-    mmCtx.fillStyle = `rgba(255, 211, 92, ${0.5 + pulse * 0.5})`;
-    mmCtx.beginPath(); mmCtx.arc(x, y, 3.5 + pulse * 2, 0, 7); mmCtx.fill();
-  }
-  const [px, py] = mapToMM(girl.position.x, girl.position.z);
-  mmCtx.fillStyle = '#ff8fb6';
-  mmCtx.beginPath(); mmCtx.arc(px, py, 5, 0, 7); mmCtx.fill();
-  mmCtx.strokeStyle = '#fff'; mmCtx.lineWidth = 2; mmCtx.stroke();
-}
-
-// ---------------- interactions: chest / npc prompts ----------------
-function setPrompt(html) {
-  if (html === null) {
-    interactPrompt.classList.add('hidden');
-    if (isTouch) actionBtn.classList.add('hidden');
-  } else {
-    interactPrompt.innerHTML = html;
-    interactPrompt.classList.remove('hidden');
-    if (isTouch) actionBtn.classList.remove('hidden');
-  }
-}
+// ---------------- HUD / minimap / prompts ----------------
+const chestGoal = () => state.chestGoal;
+const updateHUD = () => hudView.update(state, chestGoal());
+const toast = (message, duration = 2400) => hudView.toast(message, duration);
+const setPrompt = html => hudView.setPrompt(html);
 
 function nearestUnopenedChestHint() {
   let best = null, bestD = Infinity;
@@ -806,7 +969,37 @@ function nearestUnopenedChestHint() {
   return best ? best.userData.hint : null;
 }
 
+function updateObjectiveGuide() {
+  if (state.phase !== 'play') {
+    hudView.hideObjective();
+    return;
+  }
+  let best = null, distance = Infinity;
+  for (const chest of chests) {
+    if (chest.userData.opened || chest.userData.active === false) continue;
+    const d = Math.hypot(chest.position.x - girl.position.x, chest.position.z - girl.position.z);
+    if (d < distance) { best = chest; distance = d; }
+  }
+  if (!best) { hudView.hideObjective(); return; }
+  for (const chest of chests) {
+    if (!chest.userData.beacon?.material) continue;
+    chest.userData.beacon.material.opacity = chest === best ? 0.3 : 0.16;
+  }
+  const dx = best.position.x - girl.position.x, dz = best.position.z - girl.position.z;
+  const inactive = performance.now() - lastPlayerActivity > 30000;
+  hudView.showObjective({ hint: best.userData.hint, distance, angle: Math.atan2(dx, dz), inactive });
+  if (inactive && !inactivityHintShown) {
+    inactivityHintShown = true;
+    toast('💡 需要幫忙？按右邊燈泡睇最近寶箱提示！', 4000);
+  }
+}
+hudView.bindHint(() => {
+  const hint = nearestUnopenedChestHint();
+  if (hint) toast(`💡 最近嘅寶箱：${hint}`, 4000);
+});
+
 function talkToNpc(npc) {
+  advanceTutorial(2);
   sfx.click();
   let msg = `💬 ${npc.fact}`;
   const hint = nearestUnopenedChestHint();
@@ -822,12 +1015,13 @@ function talkToNpc(npc) {
 }
 
 // ---------------- quiz system ----------------
-const quiz = { questions: [], index: 0, correct: 0, earned: 0, timer: null, deadline: 0 };
+const quiz = new QuizSystem();
 
 function quizTime() { return DIFFICULTIES[state.difficulty].time; }
 function quizMult() { return DIFFICULTIES[state.difficulty].mult; }
 
 function openChest(chest) {
+  advanceTutorial(2);
   state.phase = 'quiz';
   state.nearChest = null;
   state.nearNpc = null;
@@ -835,103 +1029,77 @@ function openChest(chest) {
   sfx.chestFound();
   sparkleBurst(chest.position);
 
-  quiz.chest = chest;
-  quiz.questions = pickQuestions(3, state.difficulty);
-  quiz.index = 0;
-  quiz.correct = 0;
-  quiz.earned = 0;
-  quizScreen.classList.remove('hidden');
+  quiz.start(chest, state.difficulty, GAME_CONFIG.totalQuestionsPerChest,
+    state.sessionMode === 'practice' ? { categories: ['math', 'english', 'chinese'] } : {});
   showQuestion();
 }
 
 function showQuestion() {
-  const q = quiz.questions[quiz.index];
+  const q = quiz.current;
   const cat = CATEGORIES[q.cat];
-  const catEl = $('quiz-category');
-  catEl.textContent = cat.label;
-  catEl.className = `cat-badge ${cat.cls}`;
-  $('quiz-progress').textContent = `第 ${quiz.index + 1} / 3 題`;
-  $('quiz-question').textContent = q.q;
-  $('quiz-feedback').className = 'hidden';
-
-  const answersEl = $('quiz-answers');
-  answersEl.innerHTML = '';
-  q.a.forEach((text, i) => {
-    const btn = document.createElement('button');
-    btn.className = 'answer-btn';
-    btn.textContent = text;
-    btn.addEventListener('click', () => answer(i, btn));
-    answersEl.appendChild(btn);
+  quizView.showQuestion({
+    item: q, index: quiz.index, total: GAME_CONFIG.totalQuestionsPerChest, category: cat,
+    onAnswer: answer,
   });
 
-  const T = quizTime();
-  quiz.deadline = performance.now() + T * 1000;
-  cancelAnimationFrame(quiz.timer);
-  let lastTickSec = T;
-  const tick = () => {
-    const left = Math.max(0, quiz.deadline - performance.now());
-    $('timer-bar').style.width = (left / (T * 1000) * 100) + '%';
-    const leftSec = Math.ceil(left / 1000);
-    if (leftSec <= 4 && leftSec < lastTickSec) { sfx.tick(); lastTickSec = leftSec; }
-    if (left <= 0) { answer(-1, null); return; }
-    quiz.timer = requestAnimationFrame(tick);
-  };
-  tick();
+  const T = state.sessionTimed ? quizTime() : null;
+  if (!T) { quizView.setTimer(1); return; }
+  quiz.beginTimer(T, {
+    onTick: ({ ratio, secondsLeft, previousSecond }) => {
+      quizView.setTimer(ratio);
+      if (secondsLeft <= 4 && secondsLeft < previousSecond) sfx.tick();
+    },
+    onTimeout: () => answer(-1, null),
+  });
 }
 
 function answer(choice, btn) {
-  cancelAnimationFrame(quiz.timer);
-  const q = quiz.questions[quiz.index];
-  const buttons = [...$('quiz-answers').children];
-  buttons.forEach(b => b.disabled = true);
-  buttons[q.c]?.classList.add('correct');
-
-  const fb = $('quiz-feedback');
+  quiz.stopTimer();
+  const q = quiz.current;
+  quizView.lockAnswers(q.c, choice === q.c ? null : btn);
   const timeLeft = Math.max(0, (quiz.deadline - performance.now()) / 1000);
 
   if (choice === q.c) {
-    const bonus = Math.round(timeLeft * 5);
-    let pts = Math.round((100 + bonus) * quizMult());
-    state.streak++;
+    recordQuestionResult(q, true);
+    const scored = scoreCorrectAnswer({
+      timeLeft, multiplier: quizMult(), previousStreak: state.streak,
+    });
+    const pts = scored.points;
+    state.streak = scored.streak;
     let streakText = '';
-    if (state.streak >= 3) {
-      const streakBonus = Math.round(state.streak * 10 * quizMult());
-      pts += streakBonus;
-      streakText = ` 🔥連續答對 ${state.streak} 題 +${streakBonus}!`;
+    if (scored.streakBonus) {
+      streakText = ` 🔥連續答對 ${state.streak} 題 +${scored.streakBonus}!`;
     }
     quiz.correct++;
     quiz.earned += pts;
     state.score += pts;
-    fb.textContent = `✅ 答對了！+${pts} 分${streakText}`;
-    fb.className = 'good';
+    quizView.showFeedback(`✅ 答對了！+${pts} 分${streakText}`, 'good');
     sfx.correct();
   } else if (choice === -1) {
-    state.streak = 0;
-    fb.textContent = '⏰ 時間到 Time\'s up!';
-    fb.className = 'bad';
+    recordQuestionResult(q, false);
+    state.streak = scoreMissedAnswer('timeout').streak;
+    quizView.showFeedback('⏰ 時間到 Time\'s up!', 'bad');
     sfx.timeout();
   } else {
-    state.streak = 0;
-    btn?.classList.add('wrong');
-    fb.textContent = '❌ 答錯了 Oops!';
-    fb.className = 'bad';
+    recordQuestionResult(q, false);
+    state.streak = scoreMissedAnswer('incorrect').streak;
+    quizView.showFeedback('❌ 答錯了 Oops!', 'bad');
     sfx.wrong();
   }
   updateHUD();
 
   setTimeout(() => {
-    quiz.index++;
-    if (quiz.index < quiz.questions.length) showQuestion();
+    if (quiz.advance()) showQuestion();
     else finishChestQuiz();
   }, 1300);
 }
 
 function finishChestQuiz() {
-  quizScreen.classList.add('hidden');
+  quizView.hideQuestion();
 
   let perfectBonus = 0;
   if (quiz.correct === 3) {
-    perfectBonus = Math.round(150 * quizMult());
+    perfectBonus = perfectChestBonus(quizMult());
     state.score += perfectBonus;
     // celebration fireworks above the chest
     sfx.firework();
@@ -955,18 +1123,18 @@ function finishChestQuiz() {
     chest.userData.glow.intensity = 2;
     chest.userData.glow.color.set(0x6688ff);
   }
-  state.chestsOpened++;
+  const mission = completeChest(state, chestGoal());
   sparkleBurst(chest.position, 0xff8fb6);
 
   state.phase = 'result';
-  $('chest-result-emoji').textContent = quiz.correct === 3 ? '🌟' : quiz.correct >= 1 ? '🎉' : '😅';
-  $('chest-result-title').textContent =
-    quiz.correct === 3 ? '完美！Perfect!' : quiz.correct >= 1 ? '寶箱打開了！Chest Opened!' : '繼續努力 Keep Going!';
-  $('chest-result-text').innerHTML =
-    `📍 ${chest.userData.hint}<br>答對 ${quiz.correct} / 3 題 · 得到 <b>${quiz.earned}</b> 分` +
+  const resultHtml = `📍 ${chest.userData.hint}<br>答對 ${quiz.correct} / 3 題 · 得到 <b>${quiz.earned}</b> 分` +
     (perfectBonus ? `<br>🌟 全對獎勵 Perfect Bonus +${perfectBonus}!` : '') +
-    `<br>剩餘寶箱 Chests left: <b>${TOTAL_CHESTS - state.chestsOpened}</b>`;
-  chestResult.classList.remove('hidden');
+    `<br>剩餘寶箱 Chests left: <b>${mission.remaining}</b>`;
+  quizView.showResult({
+    emoji: quiz.correct === 3 ? '🌟' : quiz.correct >= 1 ? '🎉' : '😅',
+    title: quiz.correct === 3 ? '完美！Perfect!' : quiz.correct >= 1 ? '寶箱打開了！Chest Opened!' : '繼續努力 Keep Going!',
+    html: resultHtml,
+  });
   updateHUD();
 }
 
@@ -978,7 +1146,7 @@ function autoSaveProgress() {
   const diff = DIFFICULTIES[state.difficulty];
   const displayName = `${diff.emoji} ${state.playerName}`;
   saveScore(displayName, state.score, elapsed);
-  submitScore(displayName, state.score, elapsed, state.difficulty).then((remote) => {
+  syncRemoteScore(displayName, state.score, elapsed, state.difficulty).then((remote) => {
     if (remote && !autosaveNotified) {
       autosaveNotified = true;
       toast('💾 分數會自動儲存到 🌍 全球排行榜！');
@@ -988,23 +1156,27 @@ function autoSaveProgress() {
 
 $('chest-continue-btn').addEventListener('click', () => {
   sfx.click();
-  chestResult.classList.add('hidden');
+  quizView.hideResult();
   autoSaveProgress();
-  if (state.chestsOpened >= TOTAL_CHESTS) showVictory();
+  if (chestGoal() > 0 && missionStatus(state, chestGoal()).complete) showVictory();
   else {
     state.phase = 'play';
-    toast(`🎁 還有 ${TOTAL_CHESTS - state.chestsOpened} 個寶箱！跟住小地圖金點走！`);
+    toast(`🎁 還有 ${chestGoal() - state.chestsOpened} 個寶箱！跟住小地圖金點走！`);
   }
 });
 
 // ---------------- victory ----------------
-function showVictory() {
+function showVictory({ timedOut = false } = {}) {
   state.phase = 'victory';
+  state.sessionDeadline = 0;
+  quiz.stopTimer();
+  quizView.hideQuestion();
+  quizView.hideResult();
   sfx.victory();
   const elapsed = Math.round((performance.now() - state.startTime) / 1000);
   const mins = Math.floor(elapsed / 60), secs = elapsed % 60;
 
-  const timeBonus = Math.max(0, 900 - elapsed);
+  const timeBonus = timedOut ? 0 : Math.max(0, (state.sessionDurationSeconds || 900) - elapsed);
   state.score += timeBonus;
 
   const diff = DIFFICULTIES[state.difficulty];
@@ -1012,15 +1184,18 @@ function showVictory() {
   // auto-save: local immediately, then sync to the global board
   saveScore(displayName, state.score, elapsed);
   renderBoard($('victory-lb-list'), loadBoard(), displayName);
-  submitScore(displayName, state.score, elapsed, state.difficulty).then((remote) => {
+  syncRemoteScore(displayName, state.score, elapsed, state.difficulty).then((remote) => {
     if (remote) {
       renderBoard($('victory-lb-list'), remote, displayName);
       toast('🌍 分數已自動上載到全球排行榜！');
     }
   });
 
+  $('victory-title').textContent = timedOut
+    ? '時間到！Quick Hunt Finished!'
+    : '尋寶完成！Treasure Hunt Complete!';
   $('victory-stats').innerHTML =
-    `${state.playerName} 同學，做得好！(${diff.label})<br>` +
+    `${state.playerName} 同學，${timedOut ? '時間到，今次完成咗 ' + state.chestsOpened + ' 個寶箱！' : '做得好！'} (${diff.label})<br>` +
     `總分 Total Score: <b>${state.score}</b><br>` +
     `時間 Time: ${mins}:${String(secs).padStart(2, '0')} ` +
     (timeBonus ? `(速度獎勵 +${timeBonus})` : '') +
@@ -1032,11 +1207,13 @@ $('replay-btn').addEventListener('click', () => location.reload());
 
 // ---------------- start flow ----------------
 renderBoard($('start-lb-list'), loadBoard());
-fetchRemoteBoard().then((remote) => {
-  if (remote && remote.length) renderBoard($('start-lb-list'), remote);
-});
+if (settings.onlineScores) {
+  fetchRemoteBoard().then((remote) => {
+    if (remote && remote.length) renderBoard($('start-lb-list'), remote);
+  });
+}
 nameInput.addEventListener('input', () => {
-  startBtn.disabled = nameInput.value.trim().length === 0;
+  startBtn.disabled = normalizePlayerName(nameInput.value).length === 0;
 });
 nameInput.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !startBtn.disabled) startBtn.click();
@@ -1059,6 +1236,14 @@ document.querySelectorAll('#time-row .time-btn').forEach(btn => {
     sfx.click();
   });
 });
+document.querySelectorAll('#session-row .diff-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#session-row .diff-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    state.sessionMode = btn.dataset.session;
+    sfx.click();
+  });
+});
 function setTimeMode(morning) {
   state.morning = morning;
   world.setMorning(morning);
@@ -1074,19 +1259,25 @@ $('mute-btn').addEventListener('click', () => {
   $('mute-btn').textContent = muted ? '🔇 音樂' : '🔊 音樂';
 });
 startBtn.addEventListener('click', () => {
-  state.playerName = nameInput.value.trim();
+  state.playerName = normalizePlayerName(nameInput.value);
+  if (!state.playerName) { nameInput.focus(); return; }
   sfx.unlock();
   sfx.click();
   startBgm();
   resetQuestionPool();
+  const session = configureSession(state, chests, state.sessionMode);
   startScreen.classList.add('hidden');
   hud.classList.remove('hidden');
-  $('hud-name').textContent = `⭐ ${state.playerName} ${DIFFICULTIES[state.difficulty].emoji}`;
+  $('hud-name').textContent = `⭐ ${state.playerName} ${DIFFICULTIES[state.difficulty].emoji} · ${session.label}`;
   state.phase = 'play';
-  state.startTime = performance.now();
+  startSessionClock(state);
   updateHUD();
-  toast('🗺️ 跟住小地圖嘅金色光點搵寶箱啦！沿途記得執金幣同金星！', 3600);
-  if (isTouch && window.innerHeight > window.innerWidth) {
+  hudView.updateSessionClock(sessionSecondsRemaining(state));
+  beginTutorial();
+  toast(state.sessionMode === 'explore'
+    ? '🌿 自由探索模式：慢慢行、欣賞街景、同人物互動！'
+    : `🗺️ ${session.description} 跟住小地圖嘅金色光點出發！`, 3600);
+  if (tutorialStep < 0 && isTouch && window.innerHeight > window.innerWidth) {
     $('orientation-hint').classList.remove('hidden');
     setTimeout(() => $('orientation-hint').classList.add('hidden'), 5000);
   }
@@ -1105,6 +1296,7 @@ function grantGift() {
 }
 
 function checkPickups() {
+  let collected = false;
   const gx = girl.position.x, gz = girl.position.z;
   for (const coin of coins) {
     if (coin.userData.taken) continue;
@@ -1113,6 +1305,7 @@ function checkPickups() {
       coin.visible = false;
       state.coinsCollected++;
       state.score += 10;
+      collected = true;
       sfx.coin();
       sparkleBurst(coin.position, 0xffe9a8);
     }
@@ -1124,6 +1317,7 @@ function checkPickups() {
       star.visible = false;
       state.starsCollected++;
       state.score += 25;
+      collected = true;
       sfx.coin();
       sfx.correct();
       sparkleBurst(star.position, 0xffe066);
@@ -1138,6 +1332,7 @@ function checkPickups() {
       sfx.chestFound();
       sparkleBurst(gift.position, 0xff8fb6);
       grantGift();
+      collected = true;
     }
   }
   for (const f of foodStalls) {
@@ -1150,43 +1345,92 @@ function checkPickups() {
       sfx.coin();
       sparkleBurst(new THREE.Vector3(f.x, 1, f.z), 0xffe9a8);
       toast(`😋 食咗${f.name}！+15 分，⚡加速 8 秒！`);
+      collected = true;
     }
   }
-  updateHUD();
+  if (collected) {
+    updateHUD();
+    advanceTutorial(1);
+  }
 }
+
+world.systems.add('events', (dt, t) => {
+  updateBursts(dt);
+  updateRedPackets(dt, t);
+  if (state.phase === 'play' || state.phase === 'quiz') updatePigeons(dt, t);
+});
 
 // ---------------- main loop ----------------
 const clock = new THREE.Clock();
 const camTarget = new THREE.Vector3();
+const camOffset = new THREE.Vector3();
 let targetYaw = 0;
+let lastPlayerActivity = performance.now();
+let inactivityHintShown = false;
+let lastObjectiveUpdate = 0;
+let lastMinimapUpdate = 0;
+const GUIDANCE_UPDATE_INTERVAL = 120;
+const MINIMAP_UPDATE_INTERVAL = 80;
+function notePlayerActivity() {
+  lastPlayerActivity = performance.now();
+  inactivityHintShown = false;
+  hudView.clearHintAttention();
+}
+
+function cameraPositionIsBlocked(position) {
+  if (position.x < MAP.minX || position.x > MAP.maxX || position.z < MAP.minZ || position.z > MAP.maxZ) return true;
+  return [...colliderIndex.queryPoint(position.x, position.z)].some(c =>
+    position.x > c.minX && position.x < c.maxX && position.z > c.minZ && position.z < c.maxZ);
+}
+
+function resolveCameraObstruction(desired) {
+  if (!cameraPositionIsBlocked(desired)) return desired;
+  for (let step = 1; step <= 12; step++) {
+    desired.lerpVectors(desired, girl.position, step / 12);
+    desired.y = Math.max(desired.y, girl.position.y + 2.2);
+    if (!cameraPositionIsBlocked(desired)) break;
+  }
+  return desired;
+}
 
 function loop() {
   requestAnimationFrame(loop);
+  if (pageHidden) return;
   const dt = Math.min(clock.getDelta(), 0.05);
   const t = clock.elapsedTime;
+  const now = performance.now();
 
-  for (const fn of world.updatables) fn(dt, t);
-  updateBursts(dt);
+  hudView.updateSessionClock(sessionSecondsRemaining(state, now));
+  if (state.phase !== 'start' && state.phase !== 'victory' && sessionHasExpired(state, now)) {
+    showVictory({ timedOut: true });
+  }
 
-  for (const ch of chests) {
-    if (!ch.userData.opened) {
+  // The start screen still renders the scene as a backdrop, but does not need
+  // traffic, water, birds, particles or other simulation work until play begins.
+  // Keeping the render loop alive preserves the animated camera/preview while
+  // avoiding a large amount of main-thread work behind the menu.
+  const simulationActive = state.phase !== 'start';
+  if (simulationActive) world.systems.update(dt, t);
+
+  for (const ch of simulationActive ? chests : []) {
+    if (!ch.userData.opened && ch.userData.active !== false) {
       ch.position.y = Math.sin(t * 2 + ch.userData.index * 1.3) * 0.12 + 0.05;
       ch.rotation.y += dt * 0.6;
       ch.userData.glow.intensity = 7 + Math.sin(t * 4 + ch.userData.index) * 2.5;
     }
   }
-  for (const coin of coins) if (!coin.userData.taken) coin.rotation.z += dt * 3;
-  for (const star of stars) {
+  for (const coin of simulationActive ? coins : []) if (!coin.userData.taken) coin.rotation.z += dt * 3;
+  for (const star of simulationActive ? stars : []) {
     if (star.userData.taken) continue;
     star.rotation.y += dt * 2;
     star.position.y = 1.4 + Math.sin(t * 2.4 + star.position.x) * 0.18;
   }
-  for (const gift of gifts) {
+  for (const gift of simulationActive ? gifts : []) {
     if (gift.userData.taken) continue;
     gift.rotation.y += dt * 1.4;
     gift.position.y = 1.3 + Math.sin(t * 2 + gift.position.z) * 0.2;
   }
-  for (const npc of npcs) {
+  for (const npc of simulationActive ? npcs : []) {
     animateGirl(npc.model, dt, 0);
     npc.model.rotation.y = npc.baseRot + Math.sin(t * 0.4 + npc.idx * 2) * 0.6;
     npc.bubble.scale.setScalar(1 + Math.sin(t * 3 + npc.idx) * 0.12);
@@ -1199,15 +1443,13 @@ function loop() {
   if (boosted) boostRing.rotation.z += dt * 4;
 
   if (state.phase === 'play') {
-    let ix = 0, iz = 0;
-    if (keys.KeyW || keys.ArrowUp) iz += 1;
-    if (keys.KeyS || keys.ArrowDown) iz -= 1;
-    if (keys.KeyA || keys.ArrowLeft) ix += 1;
-    if (keys.KeyD || keys.ArrowRight) ix -= 1;
-    if (joy.active) { ix = -joy.dx; iz = -joy.dy; }
+    const movement = input.movement();
+    const ix = movement.x, iz = movement.z;
 
     const len = Math.hypot(ix, iz);
     if (len > 0.15) {
+      notePlayerActivity();
+      advanceTutorial(0);
       speedFactor = Math.min(1, len);
       const spd = SPEED * (boosted ? 1.65 : 1);
       const moveX = (ix / Math.max(len, 1)) * spd * dt * speedFactor;
@@ -1229,7 +1471,7 @@ function loop() {
         const dx = girl.position.x - v.group.position.x;
         const dz = girl.position.z - v.group.position.z;
         const d = Math.hypot(dx, dz);
-        if (d < v.hitR) {
+        if (state.trafficEnabled && d < v.hitR) {
           state.hitInvulnUntil = performance.now() + 2200;
           state.dizzyUntil = performance.now() + 800;
           const inv = 1 / (d || 1);
@@ -1248,7 +1490,7 @@ function loop() {
     // chest / npc / puppy proximity
     let nearChest = null;
     for (const ch of chests) {
-      if (ch.userData.opened) continue;
+      if (ch.userData.opened || ch.userData.active === false) continue;
       if (Math.hypot(ch.position.x - girl.position.x, ch.position.z - girl.position.z) < 3.2) {
         nearChest = ch; break;
       }
@@ -1322,8 +1564,6 @@ function loop() {
   {
     const fast = performance.now() < (state.catWaveFast || 0);
     luckyCat.userData.arm.rotation.x = -0.6 + Math.sin(t * (fast ? 16 : 2.4)) * 0.5;
-    if (state.phase === 'play' || state.phase === 'quiz') updatePigeons(dt, t);
-    updateRedPackets(dt, t);
     if (state.phase === 'play') {
       checkPhotoSpots();
       // brush past the dragon dance for a luck bonus (once a minute)
@@ -1357,16 +1597,77 @@ function loop() {
   animateGirl(girl, dt, speedFactor * (boosted ? 1.25 : 1));
 
   if (!window.__camLock) {
-    camTarget.copy(girl.position).add(CAM_OFFSET);
-    camera.position.lerp(camTarget, Math.min(1, dt * 5));
+    camOffset.copy(CAM_OFFSET);
+    if (!settings.fixedCamera) {
+      camOffset.y += cameraOrbit.pitch * 8;
+      camOffset.applyAxisAngle(THREE.Object3D.DEFAULT_UP, cameraOrbit.yaw);
+    }
+    camTarget.copy(girl.position).add(camOffset);
+    resolveCameraObstruction(camTarget);
+    camera.position.lerp(camTarget, settings.smoothCamera ? Math.min(1, dt * 5) : 1);
     camera.lookAt(girl.position.x, girl.position.y + 1.5, girl.position.z + 3);
   }
 
-  if (state.phase !== 'start') drawMinimap();
+  if (now - lastObjectiveUpdate >= GUIDANCE_UPDATE_INTERVAL) {
+    lastObjectiveUpdate = now;
+    updateObjectiveGuide();
+  }
+  if (state.phase !== 'start' && now - lastMinimapUpdate >= MINIMAP_UPDATE_INTERVAL) {
+    lastMinimapUpdate = now;
+    hudView.drawMinimap({ world, chests, player: girl, now });
+  }
   if (composer) composer.render();
   else renderer.render(scene, camera);
 }
+
+// Read-only landmark inspection views used for visual QA. Normal gameplay is
+// unchanged; open /?inspect=clock (or space, pier, peninsula, isquare, k11)
+// to review a remodelled object without walking across the whole map.
+const inspectKey = new URLSearchParams(location.search).get('inspect');
+const inspectViews = {
+  clock:     { target: [-68, 12, 118], camera: [-68, 14, 96] },
+  pier:      { target: [-86, 5, 120],  camera: [-86, 11, 99] },
+  space:     { target: [-20, 5, 116],  camera: [-20, 11, 96] },
+  peninsula: { target: [-24, 12, 82],  camera: [-24, 16, 101] },
+  isquare:   { target: [-20, 23, 38],  camera: [-4, 25, 20] },
+  k11:       { target: [42, 12, 114],  camera: [76, 21, 80] },
+  cultural:  { target: [-48, 6, 117],  camera: [-48, 14, 96] },
+  heritage:  { target: [-48, 9, 84],   camera: [-39, 14, 99] },
+  harbour:   { target: [-80, 8, 40],   camera: [-54, 17, 40] },
+  dog:       { target: [-11, .6, -20],  camera: [-11, 4, -27], player: [-14, 0, -22], showHud: true },
+  chest:     { target: [-68, 1, 110],   camera: [-68, 4, 102], player: [-65, 0, 107], showHud: true },
+  npc:       { target: [-38, 1.5, -8],   camera: [-38, 4, -15], player: [-41, 0, -10], showHud: true },
+};
+if (inspectViews[inspectKey]) {
+  const view = inspectViews[inspectKey];
+  window.__camLock = true;
+  state.phase = 'play';
+  $('start-screen').classList.add('hidden');
+  if (!view.showHud) $('hud').classList.add('hidden');
+  else $('hud').classList.remove('hidden');
+  if (view.player) girl.position.set(...view.player);
+  camera.position.set(...view.camera);
+  camera.lookAt(...view.target);
+}
 loop();
 
-// debug hook for automated testing
-window.__dg = { girl, chests, state, openChest, camera, world };
+// Automated browser-test hook. Keeping the test surface in one object lets the
+// checks exercise real gameplay paths without duplicating game logic.
+window.__dg = {
+  girl, chests, state, openChest, camera, renderer, scene, world, gpuCapabilities, rendererPreset,
+  coins, stars, gifts, foodStalls, npcs, dog, luckyCat, quiz, MTR_STATIONS,
+  doInteract, activatePointerTarget, checkPickups, rideMtr, showVictory, input, interactions,
+  cameraOrbit, settings,
+  get dogFollowing() { return dogFollowing; },
+  get catRubbed() { return catRubbed; },
+  get mtrBusy() { return mtrBusy; },
+};
+window.addEventListener('beforeunload', () => {
+  quiz.dispose();
+  world.systems.dispose();
+  dialogAccessibility.dispose();
+  stopAudio();
+  disposeObject3D(scene);
+  composer?.dispose();
+  renderer.dispose();
+}, { once: true });

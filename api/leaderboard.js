@@ -6,6 +6,7 @@
 //   POST /api/leaderboard      -> { name, score, timeSec, diff }
 // ============================================================
 import { put, list } from '@vercel/blob';
+import { validateLeaderboardEntry } from '../js/app/leaderboard-validation.js';
 
 const PATHNAME = 'leaderboard.json';
 // accept any of the prefixes Vercel may have used when connecting the store
@@ -41,9 +42,6 @@ async function writeBoard(board) {
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   res.setHeader('Cache-Control', 'no-store');
 
   if (req.method === 'OPTIONS') return res.status(204).end();
@@ -58,15 +56,9 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'POST') {
-      const { name, score, timeSec, diff } = req.body || {};
-      const entry = {
-        name: String(name || '').trim().slice(0, 30),
-        score: Math.max(0, Math.min(999999, Math.round(Number(score) || 0))),
-        timeSec: Math.max(0, Math.round(Number(timeSec) || 0)),
-        diff: ['easy', 'medium', 'hard'].includes(diff) ? diff : 'easy',
-        date: new Date().toISOString().slice(0, 10),
-      };
-      if (!entry.name) return res.status(400).json({ error: 'name required' });
+      const validation = validateLeaderboardEntry(req.body);
+      if (!validation.ok) return res.status(400).json({ error: validation.error });
+      const entry = validation.entry;
 
       const board = await readBoard();
       board.push(entry);

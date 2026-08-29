@@ -64,7 +64,7 @@ export const MEDIUM = [
   { cat: 'english', q: '"The bird is flying ___ the sky."', a: ['in', 'on', 'at', 'under'], c: 0 },
   { cat: 'english', q: 'The opposite of "expensive" is…', a: ['dear', 'cheap', 'rich', 'poor'], c: 1 },
   { cat: 'english', q: '"I ___ my homework yesterday."', a: ['do', 'did', 'done', 'doing'], c: 1 },
-  { cat: 'english', q: 'A baby cat is called a…', a: ['puppy', 'cub', 'kitten', 'calf'], c: 2 },
+  { cat: 'english', q: 'A young sheep is called a…', a: ['calf', 'lamb', 'foal', 'chick'], c: 1 },
   { cat: 'english', q: 'Which is spelled correctly?', a: ['beutiful', 'beautiful', 'beautifull', 'butiful'], c: 1 },
   { cat: 'english', q: '"He is ___ than me."', a: ['tall', 'taller', 'tallest', 'more tall'], c: 1 },
   { cat: 'english', q: 'Which word rhymes with "cake"?', a: ['cat', 'lake', 'kick', 'cook'], c: 1 },

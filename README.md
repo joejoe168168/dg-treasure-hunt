@@ -57,34 +57,76 @@ and MTR stations — find all 16 treasure chests and climb the leaderboard!
 7. Scores are **auto-saved**: locally in your browser, and — when deployed on
    Vercel with a Blob store — to a 🌍 **global leaderboard** shared by all players.
 
+## Session modes
+
+- **Full hunt** — complete all 16 landmark treasure chests.
+- **Quick hunt** — a focused three-chest session.
+- **Subject practice** — five chests using the selected subject only.
+- **Free exploration** — explore, collect and interact without chest goals or traffic penalties.
+- **Teacher mode** — the full hunt with no question timer or traffic penalty.
+
 ## Controls
 
 | Action | Desktop | Mobile / Tablet |
 | --- | --- | --- |
 | Move | `WASD` or arrow keys | Floating joystick — touch anywhere on the lower screen |
 | Open chest / talk / pet / rub | `E` | 🎁 / 💬 / 🐶 / 🐱 button |
+| Orbit camera | Right-click and drag | Fixed follow camera |
+| Reset camera | `R` | Settings → Reset camera |
+| Pause / settings | `Esc` or ⚙️ | ⚙️ Settings |
 
 ## Run it
 
-This is a fully static site (three.js loads from CDN, so internet is required).
-Browsers block ES modules from `file://`, so serve it with any static server:
+This is a Vite-powered static site. Three.js is installed locally, so the game
+does not depend on a runtime CDN import.
+Browsers block ES modules from `file://`, so run it through the included local
+server. Node.js 20 or newer is supported:
 
 ```bash
-# Python
-python -m http.server 8000
-
-# or Node
-npx serve .
+npm install
+npm run dev
 ```
 
-Then open http://localhost:8000
+Then open http://localhost:8000. V1 is at `/` and the experimental comparison
+build is at `/v2/`.
+
+Useful verification commands:
+
+```bash
+npm run check         # JavaScript syntax and all 600 questions
+npm test              # gameplay smoke test
+npm run test:visual   # desktop/mobile controls and layout
+npm run test:functional # interactions, pickups, MTR, victory and saving
+npm run test:chests   # all 16 landmark chest locations
+npm run test:props    # scenery interaction check
+npm run test:performance # desktop/mobile FPS and long-frame audit
+```
+
+Generated reference screenshots are written to `test-artifacts/`.
+
+### If the game appears frozen
+
+Use the HTTP server URL (`http://127.0.0.1:8000/`), then do a hard refresh
+(`Ctrl+Shift+R` on Windows/Linux or `Cmd+Shift+R` on macOS) after pulling changes.
+The game now pauses world simulation behind the start screen and throttles the
+HUD, objective guide, and minimap work so those updates do not block rendering.
+The `buttons.js` “refresh_token 无效” message belongs to the surrounding Codex
+browser host, not this game bundle; it can be ignored when diagnosing game FPS.
+
+## V2 comparison build
+
+The redesigned museum version is available at http://localhost:8000/v2/.
+On Windows, double-click `START-V2.cmd` in the project root to start the local
+server and open V2 automatically. Do not open `v2/index.html` directly: browser
+security prevents JavaScript modules and Three.js from running over `file://`.
 
 ## Deploy (Vercel)
 
-No build step needed — the site is static, plus one serverless function for the
-global leaderboard:
+Vite builds the static V1 and V2 clients, plus one serverless function provides
+the global leaderboard:
 
-1. Import the repo on **Vercel** (Framework Preset: **Other**, no build command).
+1. Import the repo on **Vercel** (Framework Preset: **Vite**, build command
+   `npm run build`, output directory `dist`).
 2. In the project's **Storage** tab, create / connect a **Blob** store
    (e.g. `dg-treasure-hunt-blob`) with env prefix `BLOB` — this injects
    `BLOB_READ_WRITE_TOKEN`, which `api/leaderboard.js` uses.
