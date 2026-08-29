@@ -4,8 +4,10 @@ export class GameHud {
     this.map = map;
     this.roads = roads;
     this.score = document.getElementById('hud-score');
+    this.streak = document.getElementById('hud-streak');
     this.chests = document.getElementById('hud-chests');
     this.collectibles = document.getElementById('hud-coins');
+    this.scorePops = document.getElementById('score-pops');
     this.sessionTime = document.getElementById('hud-session-time');
     this.announcer = document.getElementById('screen-reader-announcer');
     this.lastSessionSecond = null;
@@ -20,12 +22,38 @@ export class GameHud {
     this.minimap = document.getElementById('minimap');
     this.context = this.minimap.getContext('2d');
     this.toastTimer = null;
+    this.stampBtn = document.getElementById('stamp-btn');
+    this.albumBtn = document.getElementById('album-btn');
+    this.albumThumbs = document.getElementById('album-thumbs');
+    this.questBanner = document.getElementById('quest-banner');
+    this.albumGrid = document.getElementById('album-grid');
+    this.albumEmpty = document.getElementById('album-empty');
+    this.stampGrid = document.getElementById('stamp-grid');
   }
 
   update(state, totalChests) {
     this.score.textContent = `分數 Score: ${state.score}`;
     this.chests.textContent = `寶箱 🎁 ${state.chestsOpened} / ${totalChests}`;
     this.collectibles.innerHTML = `💰 ${state.coinsCollected} &nbsp;⭐ ${state.starsCollected}`;
+    if (this.streak) {
+      const show = state.streak >= 2;
+      this.streak.classList.toggle('hidden', !show);
+      if (show) {
+        this.streak.textContent = `🔥 連擊 Combo ${state.streak}`;
+        this.streak.classList.toggle('hot', state.streak >= 5);
+      }
+    }
+  }
+
+  popScore(text, clientX, clientY) {
+    if (!this.scorePops) return;
+    const el = document.createElement('div');
+    el.className = 'score-pop';
+    el.textContent = text;
+    el.style.left = `${clientX}px`;
+    el.style.top = `${clientY}px`;
+    this.scorePops.appendChild(el);
+    setTimeout(() => el.remove(), 950);
   }
 
   updateSessionClock(secondsRemaining) {
@@ -68,6 +96,57 @@ export class GameHud {
 
   hideObjective() { this.objective.classList.add('hidden'); }
 
+  showQuest(text) {
+    if (!this.questBanner) return;
+    this.questBanner.textContent = text;
+    this.questBanner.classList.remove('hidden');
+  }
+
+  hideQuest() { this.questBanner?.classList.add('hidden'); }
+
+  setStamps(stamps, defs) {
+    const earned = Object.values(stamps).filter(Boolean).length;
+    if (this.stampBtn) this.stampBtn.textContent = `🎫 ${earned}/${defs.length}`;
+    if (!this.stampGrid) return;
+    this.stampGrid.replaceChildren(...defs.map(def => {
+      const slot = document.createElement('div');
+      slot.className = 'stamp-slot' + (stamps[def.id] ? ' earned' : '');
+      slot.innerHTML = `<div class="stamp-emoji">${def.emoji}</div><b>${def.title}</b><small>${stamps[def.id] ? def.done : def.hint}</small>`;
+      return slot;
+    }));
+  }
+
+  addPolaroid({ name, dataUrl, album }) {
+    if (this.albumBtn) this.albumBtn.textContent = `📷 ${album.length}`;
+    if (this.albumThumbs && dataUrl) {
+      const thumb = document.createElement('div');
+      thumb.className = 'polaroid-thumb';
+      const img = document.createElement('img');
+      img.alt = name;
+      img.src = dataUrl;
+      thumb.appendChild(img);
+      this.albumThumbs.appendChild(thumb);
+    }
+    this.renderAlbum(album);
+  }
+
+  renderAlbum(album) {
+    if (!this.albumGrid) return;
+    const empty = !album.length;
+    this.albumEmpty?.classList.toggle('hidden', !empty);
+    this.albumGrid.replaceChildren(...album.map(item => {
+      const fig = document.createElement('figure');
+      fig.className = 'polaroid';
+      const img = document.createElement('img');
+      img.alt = item.name;
+      img.src = item.dataUrl || '';
+      const cap = document.createElement('figcaption');
+      cap.textContent = item.name;
+      fig.append(img, cap);
+      return fig;
+    }));
+  }
+
   clearHintAttention() { this.hintButton.classList.remove('attention'); }
 
   mapPoint(x, z) {
@@ -77,7 +156,7 @@ export class GameHud {
     ];
   }
 
-  drawMinimap({ world, chests, player, now }) {
+  drawMinimap({ world, chests, player, now, dog = null, photos = [] }) {
     const context = this.context, minimap = this.minimap;
     context.clearRect(0, 0, minimap.width, minimap.height);
     context.fillStyle = 'rgba(15,18,52,0.9)'; context.fillRect(0, 0, minimap.width, minimap.height);
@@ -100,6 +179,16 @@ export class GameHud {
       const [x, y] = this.mapPoint(chest.position.x, chest.position.z);
       context.fillStyle = `rgba(255, 211, 92, ${.5 + pulse * .5})`;
       context.beginPath(); context.arc(x, y, 3.5 + pulse * 2, 0, 7); context.fill();
+    }
+    for (const photo of photos || []) {
+      const [px, py] = this.mapPoint(photo.x, photo.z);
+      context.fillStyle = '#7df0ff';
+      context.beginPath(); context.arc(px, py, 3, 0, 7); context.fill();
+    }
+    if (dog) {
+      const [dx, dy] = this.mapPoint(dog.position.x, dog.position.z);
+      context.fillStyle = '#c89058';
+      context.beginPath(); context.arc(dx, dy, 3.5, 0, 7); context.fill();
     }
     const [x, y] = this.mapPoint(player.position.x, player.position.z);
     context.fillStyle = '#ff8fb6'; context.beginPath(); context.arc(x, y, 5, 0, 7); context.fill();

@@ -25,5 +25,8 @@ export function createGameState() {
     sessionDeadline: 0,
     sessionPausedAt: 0,
     trafficEnabled: true,
+    stamps: { friend: false, park: false, mtr: false, first: false },
+    stampSetBonus: false,
+    wowUntil: 0,
   };
 }

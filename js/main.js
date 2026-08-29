@@ -58,6 +58,7 @@ if (isTouch) document.body.classList.add('touch-device');
 // Mobile: no AA, lower resolution, no shadows — big speed boost
 const renderer = new THREE.WebGLRenderer({
   canvas, antialias: !LOW_FX, powerPreference: 'high-performance',
+  preserveDrawingBuffer: true,
 });
 const rendererPreset = chooseQualityPreset(renderer, QUALITY_PREFERENCE);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, rendererPreset.pixelRatio));
@@ -72,8 +73,17 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 600);
 
 // desktop only: bloom post-processing for that neon HK glow
+const glRendererInfo = (() => {
+  try {
+    const gl = renderer.getContext();
+    const info = gl.getExtension('WEBGL_debug_renderer_info');
+    return info ? String(gl.getParameter(info.UNMASKED_RENDERER_WEBGL) || '') : '';
+  } catch { return ''; }
+})();
+const softwareGL = /swiftshader|llvmpipe|softpipe|microsoft basic render/i.test(glRendererInfo);
+
 let composer = null;
-if (rendererPreset.bloom) {
+if (rendererPreset.bloom && !softwareGL) {
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
   composer.addPass(new UnrealBloomPass(
@@ -166,6 +176,28 @@ const chests = CHEST_SPOTS.map((spot, i) => {
   return chest;
 });
 const TOTAL_CHESTS = chests.length;
+
+const trailCrumbs = [];
+{
+  const crumbM = new THREE.MeshBasicMaterial({ color: 0xffd35c, transparent: true, opacity: .8 });
+  const crumbG = new THREE.SphereGeometry(0.16, 8, 6);
+  for (let i = 0; i < 8; i++) {
+    const crumb = new THREE.Mesh(crumbG, crumbM.clone());
+    crumb.visible = false;
+    scene.add(crumb);
+    trailCrumbs.push(crumb);
+  }
+}
+const landmarkSeen = CHEST_SPOTS.map(spot => ({ x: spot.x, z: spot.z, hint: spot.hint, seen: false }));
+function checkLandmarkVisits() {
+  for (const spot of landmarkSeen) {
+    if (spot.seen) continue;
+    if (Math.hypot(spot.x - girl.position.x, spot.z - girl.position.z) < 12) {
+      spot.seen = true;
+      toast(`📍 ${spot.hint}`, 2800);
+    }
+  }
+}
 
 // ---------------- coins (auto-placed along the streets) ----------------
 const coinM = new THREE.MeshStandardMaterial({ color: 0xffd35c, metalness: 0.8, roughness: 0.25 });
@@ -397,6 +429,7 @@ function rideMtr() {
     fadeEl.style.opacity = '0';
     toast(`🚇 ${dest.name}站到喇！小心月台空隙 Mind the gap!`, 3200);
     mtrBusy = false;
+    earnStamp('mtr', '🎫 地鐵印章GET！搭過喇 (+20 分)', 20);
   }, 450);
 }
 
@@ -474,6 +507,7 @@ function updateRedPackets(dt, t) {
       state.score += 20;
       sfx.coin();
       sparkleBurst(rp.m.position, 0xd92b2b);
+      popAt(rp.m.position, '+20');
       updateHUD();
     }
     if (gone || grabbed) {
@@ -487,7 +521,17 @@ function updateRedPackets(dt, t) {
 const PHOTO_SPOTS = [
   { x: -62, z: 122, name: '鐘樓 Clock Tower' },
   { x: 56, z: 124, name: '星光大道 Avenue of Stars' },
+  { x: -8, z: 118, name: '太空館 Space Museum' },
 ];
+const STAMP_DEFS = [
+  { id: 'friend', emoji: '🐶', title: '新朋友', hint: '摸摸公園門口嘅小狗', done: '小狗跟住你喇！' },
+  { id: 'park', emoji: '🦩', title: '公園散步', hint: '帶小狗去九龍公園湖邊', done: '一齊睇咗紅鸛！' },
+  { id: 'mtr', emoji: '🚇', title: 'Mind the gap', hint: '搭一次地鐵', done: '地鐵搭過喇！' },
+  { id: 'first', emoji: '🎁', title: '第一個寶藏', hint: '打開第一個寶箱', done: '尋寶開始喇！' },
+];
+const album = [];
+const PARK_POND = { x: -33, z: -10 };
+let keepsakeOpen = false;
 const photoTaken = new Set();
 const flashEl = document.createElement('div');
 flashEl.style.cssText =
@@ -501,6 +545,16 @@ for (const ps of PHOTO_SPOTS) {              // glowing camera marker on the gro
   scene.add(ring);
   ps.ring = ring;
 }
+function capturePolaroid(name) {
+  if (composer) composer.render();
+  else renderer.render(scene, camera);
+  let dataUrl = '';
+  try { dataUrl = renderer.domElement.toDataURL('image/jpeg', 0.68); } catch { /* some GPUs block readback */ }
+  const shot = { name, dataUrl };
+  album.push(shot);
+  hudView.addPolaroid({ name, dataUrl, album });
+}
+
 function checkPhotoSpots() {
   for (const ps of PHOTO_SPOTS) {
     if (photoTaken.has(ps.name)) continue;
@@ -508,13 +562,103 @@ function checkPhotoSpots() {
       photoTaken.add(ps.name);
       ps.ring.visible = false;
       state.score += 25;
-      sfx.click(); sfx.correct();
+      sfx.camera(); sfx.correct();
+      capturePolaroid(ps.name);
       flashEl.style.opacity = '0.9';
       setTimeout(() => { flashEl.style.opacity = '0'; }, 130);
-      toast(`📸 喺${ps.name}影咗張靚相！(+25 分)`, 3500);
+      toast(`📸 喺${ps.name}影咗張靚相！收入相簿喇 (+25 分)`, 3500);
       updateHUD();
     }
   }
+}
+
+function burstConfetti() {
+  const layer = $('confetti');
+  if (!layer || settings.reducedMotion) return;
+  layer.replaceChildren();
+  const colors = ['#ffd35c', '#ff8fb6', '#7db8ff', '#7dffb2', '#ff5c5c', '#fff'];
+  for (let i = 0; i < 26; i++) {
+    const bit = document.createElement('i');
+    bit.className = 'confetti-bit';
+    bit.style.left = `${6 + Math.random() * 88}%`;
+    bit.style.background = colors[i % colors.length];
+    bit.style.animationDelay = `${Math.random() * 0.28}s`;
+    bit.style.animationDuration = `${1.15 + Math.random() * 0.7}s`;
+    layer.appendChild(bit);
+  }
+  setTimeout(() => layer.replaceChildren(), 2000);
+}
+
+function earnStamp(id, message, points = 0) {
+  if (state.stamps[id]) return false;
+  state.stamps[id] = true;
+  if (points) {
+    state.score += points;
+    popAt(girl.position, `+${points}`);
+  }
+  hudView.setStamps(state.stamps, STAMP_DEFS);
+  if (message) toast(message, 3800);
+  const all = STAMP_DEFS.every(def => state.stamps[def.id]);
+  if (all && !state.stampSetBonus) {
+    state.stampSetBonus = true;
+    state.score += 50;
+    sfx.fanfare();
+    burstConfetti();
+    toast('🎫 印章收集完成！(+50 分) Stamp set complete!', 4200);
+  }
+  updateHUD();
+  return true;
+}
+
+function startFirstChestWow(chest) {
+  burstConfetti();
+  sfx.fanfare();
+  for (let i = 0; i < 7; i++) {
+    setTimeout(() => {
+      sparkleBurst(
+        chest.position.clone().add(new THREE.Vector3((Math.random() - .5) * 7, 1 + Math.random() * 7, (Math.random() - .5) * 7)),
+        [0xffd35c, 0xff8fb6, 0x7db8ff, 0xfff3d6][i % 4]);
+    }, i * 120);
+  }
+  if (!settings.reducedMotion && !window.__camLock) {
+    state.wowUntil = performance.now() + 2100;
+    state.wowChest = chest;
+  }
+  flashEl.style.background = '#ffe7a8';
+  flashEl.style.opacity = '0.5';
+  setTimeout(() => { flashEl.style.opacity = '0'; flashEl.style.background = '#fff'; }, 200);
+}
+
+function updateQuestBanner() {
+  if (state.phase !== 'play') { hudView.hideQuest(); return; }
+  if (dogFollowing && !state.stamps.park)
+    hudView.showQuest('🐶 帶小狗去九龍公園湖邊！Walk the puppy to the pond');
+  else if (!state.stamps.friend)
+    hudView.showQuest('🐶 去公園門口摸摸小狗 Meet the puppy by the park');
+  else if (!state.stamps.mtr)
+    hudView.showQuest('🚇 試吓搭一次地鐵 Ride the MTR once');
+  else if (!state.stamps.first && state.chestGoal > 0)
+    hudView.showQuest('🎁 打開第一個寶箱 Open your first chest');
+  else
+    hudView.hideQuest();
+}
+
+function setKeepsakeOpen(which, open) {
+  const albumScreen = $('album-screen'), stampScreen = $('stamp-screen');
+  if (which === 'album') albumScreen.classList.toggle('hidden', !open);
+  if (which === 'stamps') stampScreen.classList.toggle('hidden', !open);
+  if (!open) {
+    keepsakeOpen = !albumScreen.classList.contains('hidden') || !stampScreen.classList.contains('hidden');
+  } else {
+    keepsakeOpen = true;
+    if (which === 'album') stampScreen.classList.add('hidden');
+    if (which === 'stamps') albumScreen.classList.add('hidden');
+    hudView.setStamps(state.stamps, STAMP_DEFS);
+    hudView.renderAlbum(album);
+  }
+  keepsakeOpen = !albumScreen.classList.contains('hidden') || !stampScreen.classList.contains('hidden');
+  if (keepsakeOpen) { input?.resetJoystick(); pauseSessionClock(state); }
+  else if (state.phase === 'play') resumeSessionClock(state);
 }
 
 // ---------------- pigeon flocks that scatter ----------------
@@ -604,28 +748,39 @@ const npcs = NPC_SPOTS.map((spot, i) => {
   return { model: npc, bubble, fact: spot.fact, talked: false, baseRot: npc.rotation.y, idx: i };
 });
 
-// ---------------- sparkle particle bursts ----------------
+// ---------------- sparkle particle bursts (pooled) ----------------
+const SPARKLE_N = 28;
 const bursts = [];
 function sparkleBurst(pos, color = 0xffd35c) {
-  const n = 40;
-  const geo = new THREE.BufferGeometry();
-  const positions = new Float32Array(n * 3);
-  const vels = [];
-  for (let i = 0; i < n; i++) {
-    positions.set([pos.x, pos.y + 1, pos.z], i * 3);
-    const a = Math.random() * Math.PI * 2, up = 2 + Math.random() * 4;
-    vels.push(new THREE.Vector3(Math.cos(a) * (1 + Math.random() * 2), up, Math.sin(a) * (1 + Math.random() * 2)));
+  let b = bursts.find(item => item.life <= 0);
+  if (!b) {
+    if (bursts.length >= 10) b = bursts[0];
+    else {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(SPARKLE_N * 3), 3));
+      const pts = new THREE.Points(geo, new THREE.PointsMaterial({
+        color, size: 0.28, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false,
+      }));
+      scene.add(pts);
+      b = { pts, vels: Array.from({ length: SPARKLE_N }, () => new THREE.Vector3()), life: 0 };
+      bursts.push(b);
+    }
   }
-  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  const pts = new THREE.Points(geo, new THREE.PointsMaterial({
-    color, size: 0.28, transparent: true, opacity: 1, blending: THREE.AdditiveBlending, depthWrite: false,
-  }));
-  scene.add(pts);
-  bursts.push({ pts, vels, life: 1.2 });
+  b.life = 1.1;
+  b.pts.material.color.set(color);
+  b.pts.material.opacity = 1;
+  b.pts.visible = true;
+  const posAttr = b.pts.geometry.attributes.position;
+  for (let i = 0; i < SPARKLE_N; i++) {
+    posAttr.array.set([pos.x, pos.y + 1, pos.z], i * 3);
+    const a = Math.random() * Math.PI * 2, up = 2 + Math.random() * 4;
+    b.vels[i].set(Math.cos(a) * (1 + Math.random() * 2), up, Math.sin(a) * (1 + Math.random() * 2));
+  }
+  posAttr.needsUpdate = true;
 }
 function updateBursts(dt) {
-  for (let i = bursts.length - 1; i >= 0; i--) {
-    const b = bursts[i];
+  for (const b of bursts) {
+    if (b.life <= 0) { b.pts.visible = false; continue; }
     b.life -= dt;
     const pos = b.pts.geometry.attributes.position;
     for (let j = 0; j < b.vels.length; j++) {
@@ -635,9 +790,17 @@ function updateBursts(dt) {
       pos.array[j * 3 + 2] += b.vels[j].z * dt;
     }
     pos.needsUpdate = true;
-    b.pts.material.opacity = Math.max(0, b.life / 1.2);
-    if (b.life <= 0) { scene.remove(b.pts); bursts.splice(i, 1); }
+    b.pts.material.opacity = Math.max(0, b.life / 1.1);
+    if (b.life <= 0) b.pts.visible = false;
   }
+}
+
+const _proj = new THREE.Vector3();
+function popAt(pos, text) {
+  _proj.copy(pos).project(camera);
+  hudView.popScore(text,
+    (_proj.x * 0.5 + 0.5) * window.innerWidth,
+    (-_proj.y * 0.5 + 0.5) * window.innerHeight);
 }
 
 // ---------------- game state ----------------
@@ -714,6 +877,11 @@ $('tutorial-skip').addEventListener('click', () => {
 });
 
 function setPaused(paused) {
+  if (keepsakeOpen) {
+    setKeepsakeOpen('album', false);
+    setKeepsakeOpen('stamps', false);
+    if (paused) return;
+  }
   if (paused && state.phase !== 'play') return;
   if (!paused && state.phase !== 'paused') return;
   state.phase = paused ? 'paused' : 'play';
@@ -741,7 +909,7 @@ function resetCamera() {
   cameraOrbit.yaw = 0;
   cameraOrbit.pitch = 0;
   camera.position.copy(girl.position).add(CAM_OFFSET);
-  camera.lookAt(girl.position.x, girl.position.y + 1.5, girl.position.z + 3);
+  camera.lookAt(girl.position.x, girl.position.y + 1.55, girl.position.z);
   toast('🎥 鏡頭已重設 Camera reset');
 }
 $('pause-btn').addEventListener('click', () => setPaused(true));
@@ -782,6 +950,10 @@ $('online-scores-setting').addEventListener('change', event => {
   toast(settings.onlineScores ? '🌍 網上排行榜已開啟' : '🔒 分數只會儲存在這部裝置');
 });
 $('camera-reset-btn').addEventListener('click', resetCamera);
+$('album-btn').addEventListener('click', () => { if (state.phase === 'play') setKeepsakeOpen('album', true); });
+$('stamp-btn').addEventListener('click', () => { if (state.phase === 'play') setKeepsakeOpen('stamps', true); });
+$('album-close-btn').addEventListener('click', () => setKeepsakeOpen('album', false));
+$('stamp-close-btn').addEventListener('click', () => setKeepsakeOpen('stamps', false));
 
 function doInteract() {
   notePlayerActivity();
@@ -795,13 +967,18 @@ function doInteract() {
 // ---------------- input ----------------
 const input = new InputController({
   onAction: action => {
+    if (action === INPUT_ACTIONS.pause && keepsakeOpen) {
+      setKeepsakeOpen('album', false);
+      setKeepsakeOpen('stamps', false);
+      return;
+    }
     if (action === INPUT_ACTIONS.interact) doInteract();
     else if (action === INPUT_ACTIONS.pause) setPaused(state.phase === 'play');
     else if (action === INPUT_ACTIONS.cameraReset) resetCamera();
   },
   canAction: action => action === INPUT_ACTIONS.pause
-    ? state.phase === 'play' || state.phase === 'paused'
-    : state.phase === 'play',
+    ? state.phase === 'play' || state.phase === 'paused' || keepsakeOpen
+    : state.phase === 'play' && !keepsakeOpen,
 });
 
 // ---------------- direct mouse / touch interaction ----------------
@@ -809,7 +986,7 @@ const input = new InputController({
 // child mesh (lid, arm, hair, etc.) resolves to the correct gameplay object.
 const interactions = new InteractionSystem({
   canvas, camera, player: girl,
-  isEnabled: () => state.phase === 'play',
+  isEnabled: () => state.phase === 'play' && !keepsakeOpen,
   onTooFar: (_entry, distance) => toast(`行近一點再互動 · Move closer (${Math.ceil(distance)}m)`, 2200),
 });
 chests.forEach(ch => interactions.register(ch, 'chest', ch, {
@@ -920,6 +1097,7 @@ function adoptDog() {
   sfx.bark();
   sparkleBurst(dog.position, 0xc89058);
   toast('🐶 小狗好鍾意你！佢會跟住你一齊尋寶！(+30 分)', 4000);
+  earnStamp('friend', '🎫 新朋友印章！帶佢去九龍公園湖邊行吓～');
   setPrompt(null);
   state.nearDog = false;
   updateHUD();
@@ -972,6 +1150,7 @@ function nearestUnopenedChestHint() {
 function updateObjectiveGuide() {
   if (state.phase !== 'play') {
     hudView.hideObjective();
+    trailCrumbs.forEach(c => { c.visible = false; });
     return;
   }
   let best = null, distance = Infinity;
@@ -980,10 +1159,23 @@ function updateObjectiveGuide() {
     const d = Math.hypot(chest.position.x - girl.position.x, chest.position.z - girl.position.z);
     if (d < distance) { best = chest; distance = d; }
   }
-  if (!best) { hudView.hideObjective(); return; }
+  if (!best) {
+    hudView.hideObjective();
+    trailCrumbs.forEach(c => { c.visible = false; });
+    return;
+  }
   for (const chest of chests) {
     if (!chest.userData.beacon?.material) continue;
     chest.userData.beacon.material.opacity = chest === best ? 0.3 : 0.16;
+  }
+  for (let i = 0; i < trailCrumbs.length; i++) {
+    const t = (i + 1) / (trailCrumbs.length + 1);
+    trailCrumbs[i].visible = true;
+    trailCrumbs[i].position.set(
+      girl.position.x + (best.position.x - girl.position.x) * t,
+      0.35 + Math.sin(performance.now() / 220 + i) * 0.08,
+      girl.position.z + (best.position.z - girl.position.z) * t);
+    trailCrumbs[i].material.opacity = 0.35 + t * 0.5;
   }
   const dx = best.position.x - girl.position.x, dz = best.position.z - girl.position.z;
   const inactive = performance.now() - lastPlayerActivity > 30000;
@@ -1116,8 +1308,9 @@ function finishChestQuiz() {
   }
 
   const chest = quiz.chest;
+  const isFirstChest = state.chestsOpened === 0;
   chest.userData.opened = true;
-  chest.userData.lid.rotation.x = -0.9;
+  chest.userData.opening = 0;
   chest.userData.beacon.visible = false;
   if (chest.userData.glow.isPointLight) {
     chest.userData.glow.intensity = 2;
@@ -1125,14 +1318,25 @@ function finishChestQuiz() {
   }
   const mission = completeChest(state, chestGoal());
   sparkleBurst(chest.position, 0xff8fb6);
+  let firstBonus = 0;
+  if (isFirstChest) {
+    firstBonus = 25;
+    state.score += firstBonus;
+    earnStamp('first');
+    startFirstChestWow(chest);
+  }
 
   state.phase = 'result';
+  chestResult.querySelector('.result-card')?.classList.toggle('first-treasure', isFirstChest);
   const resultHtml = `📍 ${chest.userData.hint}<br>答對 ${quiz.correct} / 3 題 · 得到 <b>${quiz.earned}</b> 分` +
     (perfectBonus ? `<br>🌟 全對獎勵 Perfect Bonus +${perfectBonus}!` : '') +
+    (isFirstChest ? `<br>🎁 第一個寶藏獎勵 First treasure +${firstBonus}!` : '') +
     `<br>剩餘寶箱 Chests left: <b>${mission.remaining}</b>`;
   quizView.showResult({
-    emoji: quiz.correct === 3 ? '🌟' : quiz.correct >= 1 ? '🎉' : '😅',
-    title: quiz.correct === 3 ? '完美！Perfect!' : quiz.correct >= 1 ? '寶箱打開了！Chest Opened!' : '繼續努力 Keep Going!',
+    emoji: isFirstChest ? '🏆' : quiz.correct === 3 ? '🌟' : quiz.correct >= 1 ? '🎉' : '😅',
+    title: isFirstChest
+      ? '第一個寶藏！First Treasure!'
+      : quiz.correct === 3 ? '完美！Perfect!' : quiz.correct >= 1 ? '寶箱打開了！Chest Opened!' : '繼續努力 Keep Going!',
     html: resultHtml,
   });
   updateHUD();
@@ -1199,7 +1403,9 @@ function showVictory({ timedOut = false } = {}) {
     `總分 Total Score: <b>${state.score}</b><br>` +
     `時間 Time: ${mins}:${String(secs).padStart(2, '0')} ` +
     (timeBonus ? `(速度獎勵 +${timeBonus})` : '') +
-    `<br>金幣 💰 ${state.coinsCollected} · 金星 ⭐ ${state.starsCollected}`;
+    `<br>金幣 💰 ${state.coinsCollected} · 金星 ⭐ ${state.starsCollected}` +
+    `<br>🎫 印章 Stamps: ${Object.values(state.stamps).filter(Boolean).length}/4` +
+    ` · 📷 相片 Photos: ${album.length}`;
   victoryScreen.classList.remove('hidden');
 }
 
@@ -1271,6 +1477,8 @@ startBtn.addEventListener('click', () => {
   $('hud-name').textContent = `⭐ ${state.playerName} ${DIFFICULTIES[state.difficulty].emoji} · ${session.label}`;
   state.phase = 'play';
   startSessionClock(state);
+  hudView.setStamps(state.stamps, STAMP_DEFS);
+  hudView.renderAlbum(album);
   updateHUD();
   hudView.updateSessionClock(sessionSecondsRemaining(state));
   beginTutorial();
@@ -1286,9 +1494,9 @@ startBtn.addEventListener('click', () => {
 // ---------------- pickups ----------------
 function grantGift() {
   const roll = Math.random();
-  if (roll < 0.4) { state.score += 50; toast('🎀 神秘禮物：+50 分！'); }
-  else if (roll < 0.7) { state.score += 100; toast('🎀 神秘禮物：+100 分！勁呀！'); }
-  else if (roll < 0.85) { state.score += 150; toast('🎀 神秘禮物：+150 分！！超勁！'); }
+  if (roll < 0.4) { state.score += 50; popAt(girl.position, '+50'); toast('🎀 神秘禮物：+50 分！'); }
+  else if (roll < 0.7) { state.score += 100; popAt(girl.position, '+100'); toast('🎀 神秘禮物：+100 分！勁呀！'); }
+  else if (roll < 0.85) { state.score += 150; popAt(girl.position, '+150'); toast('🎀 神秘禮物：+150 分！！超勁！'); }
   else {
     state.boostUntil = performance.now() + 10000;
     toast('🎀 神秘禮物：⚡ 加速 10 秒！衝呀！');
@@ -1298,9 +1506,18 @@ function grantGift() {
 function checkPickups() {
   let collected = false;
   const gx = girl.position.x, gz = girl.position.z;
+  const pull = (obj, range, grab) => {
+    const d = Math.hypot(obj.position.x - gx, obj.position.z - gz);
+    if (d < range && d > 0.12) {
+      const k = Math.min(0.28, (range - d) / range * 0.35);
+      obj.position.x += (gx - obj.position.x) * k;
+      obj.position.z += (gz - obj.position.z) * k;
+    }
+    return d < grab;
+  };
   for (const coin of coins) {
     if (coin.userData.taken) continue;
-    if (Math.hypot(coin.position.x - gx, coin.position.z - gz) < 1.1) {
+    if (pull(coin, 2.6, 1.1)) {
       coin.userData.taken = true;
       coin.visible = false;
       state.coinsCollected++;
@@ -1308,11 +1525,12 @@ function checkPickups() {
       collected = true;
       sfx.coin();
       sparkleBurst(coin.position, 0xffe9a8);
+      popAt(coin.position, '+10');
     }
   }
   for (const star of stars) {
     if (star.userData.taken) continue;
-    if (Math.hypot(star.position.x - gx, star.position.z - gz) < 1.3) {
+    if (pull(star, 2.8, 1.3)) {
       star.userData.taken = true;
       star.visible = false;
       state.starsCollected++;
@@ -1321,12 +1539,13 @@ function checkPickups() {
       sfx.coin();
       sfx.correct();
       sparkleBurst(star.position, 0xffe066);
+      popAt(star.position, '+25');
       toast('⭐ 金星 +25 分！');
     }
   }
   for (const gift of gifts) {
     if (gift.userData.taken) continue;
-    if (Math.hypot(gift.position.x - gx, gift.position.z - gz) < 1.4) {
+    if (pull(gift, 2.8, 1.4)) {
       gift.userData.taken = true;
       gift.visible = false;
       sfx.chestFound();
@@ -1343,7 +1562,9 @@ function checkPickups() {
       state.score += 15;
       state.boostUntil = Math.max(state.boostUntil, performance.now() + 8000);
       sfx.coin();
-      sparkleBurst(new THREE.Vector3(f.x, 1, f.z), 0xffe9a8);
+      const fp = new THREE.Vector3(f.x, 1, f.z);
+      sparkleBurst(fp, 0xffe9a8);
+      popAt(fp, '+15');
       toast(`😋 食咗${f.name}！+15 分，⚡加速 8 秒！`);
       collected = true;
     }
@@ -1393,9 +1614,14 @@ function resolveCameraObstruction(desired) {
   return desired;
 }
 
+let loopArmed = false;
+let skipNextFrame = false;
 function loop() {
   requestAnimationFrame(loop);
+  if (!loopArmed) { loopArmed = true; return; }
+  if (skipNextFrame) { skipNextFrame = false; return; }
   if (pageHidden) return;
+  const frameStart = performance.now();
   const dt = Math.min(clock.getDelta(), 0.05);
   const t = clock.elapsedTime;
   const now = performance.now();
@@ -1413,13 +1639,24 @@ function loop() {
   if (simulationActive) world.systems.update(dt, t);
 
   for (const ch of simulationActive ? chests : []) {
+    if (ch.userData.opening != null && ch.userData.opening < 1) {
+      ch.userData.opening = Math.min(1, ch.userData.opening + dt * 2.4);
+      ch.userData.lid.rotation.x = -1.05 * ch.userData.opening;
+    }
     if (!ch.userData.opened && ch.userData.active !== false) {
       ch.position.y = Math.sin(t * 2 + ch.userData.index * 1.3) * 0.12 + 0.05;
       ch.rotation.y += dt * 0.6;
-      ch.userData.glow.intensity = 7 + Math.sin(t * 4 + ch.userData.index) * 2.5;
+      if (ch.userData.glow.isPointLight) ch.userData.glow.intensity = 7 + Math.sin(t * 4 + ch.userData.index) * 2.5;
     }
   }
-  for (const coin of simulationActive ? coins : []) if (!coin.userData.taken) coin.rotation.z += dt * 3;
+  if (simulationActive) {
+    const gx = girl.position.x, gz = girl.position.z;
+    for (const coin of coins) {
+      if (coin.userData.taken) continue;
+      if (Math.abs(coin.position.x - gx) > 36 || Math.abs(coin.position.z - gz) > 36) continue;
+      coin.rotation.z += dt * 3;
+    }
+  }
   for (const star of simulationActive ? stars : []) {
     if (star.userData.taken) continue;
     star.rotation.y += dt * 2;
@@ -1442,7 +1679,7 @@ function loop() {
   boostRing.visible = boosted && state.phase === 'play';
   if (boosted) boostRing.rotation.z += dt * 4;
 
-  if (state.phase === 'play') {
+  if (state.phase === 'play' && !keepsakeOpen) {
     const movement = input.movement();
     const ix = movement.x, iz = movement.z;
 
@@ -1464,6 +1701,12 @@ function loop() {
     girl.rotation.y += dy * Math.min(1, dt * 12);
 
     checkPickups();
+    checkLandmarkVisits();
+    if (dogFollowing && !state.stamps.park &&
+        Math.hypot(girl.position.x - PARK_POND.x, girl.position.z - PARK_POND.z) < 7.5) {
+      earnStamp('park', '🦩 帶小狗睇咗紅鸛！公園印章GET (+40 分)', 40);
+      sparkleBurst(new THREE.Vector3(PARK_POND.x, 1, PARK_POND.z), 0xff8fb6);
+    }
 
     // traffic collision — watch out crossing the road!
     if (performance.now() > state.hitInvulnUntil) {
@@ -1574,6 +1817,7 @@ function loop() {
         state.score += 30;
         sfx.chestFound();
         sparkleBurst(dh.position, 0xd92b2b);
+        popAt(dh.position, '+30');
         toast('🐉 舞龍隊俾咗你好運！(+30 分)', 3500);
         updateHUD();
       }
@@ -1588,6 +1832,7 @@ function loop() {
         state.score += 200;
         sfx.firework();
         sparkleBurst(bauhinia.position.clone().add(new THREE.Vector3(0, 1.2, 0)), 0xffc83c);
+        popAt(bauhinia.position, '+200');
         toast('💛 嘩！你搵到隱藏嘅金紫荊！(+200 分)', 4500);
         updateHUD();
       }
@@ -1597,27 +1842,48 @@ function loop() {
   animateGirl(girl, dt, speedFactor * (boosted ? 1.25 : 1));
 
   if (!window.__camLock) {
-    camOffset.copy(CAM_OFFSET);
-    if (!settings.fixedCamera) {
-      camOffset.y += cameraOrbit.pitch * 8;
-      camOffset.applyAxisAngle(THREE.Object3D.DEFAULT_UP, cameraOrbit.yaw);
+    if (state.wowUntil && now < state.wowUntil && state.wowChest) {
+      const chest = state.wowChest.position;
+      camTarget.set(chest.x, 6.2, chest.z - 8);
+      camera.position.lerp(camTarget, Math.min(1, dt * 4));
+      camera.lookAt(chest.x, 1.2, chest.z);
+    } else {
+      camOffset.copy(CAM_OFFSET);
+      if (!settings.fixedCamera) {
+        camOffset.y += cameraOrbit.pitch * 8;
+        camOffset.applyAxisAngle(THREE.Object3D.DEFAULT_UP, cameraOrbit.yaw);
+      }
+      camTarget.copy(girl.position).add(camOffset);
+      resolveCameraObstruction(camTarget);
+      camera.position.lerp(camTarget, settings.smoothCamera ? Math.min(1, dt * 5) : 1);
+      if (speedFactor > 0.2 && !settings.reducedMotion) {
+        camera.position.y += Math.sin(t * 11) * 0.08 * speedFactor;
+      }
+      camera.lookAt(girl.position.x, girl.position.y + 1.55, girl.position.z);
     }
-    camTarget.copy(girl.position).add(camOffset);
-    resolveCameraObstruction(camTarget);
-    camera.position.lerp(camTarget, settings.smoothCamera ? Math.min(1, dt * 5) : 1);
-    camera.lookAt(girl.position.x, girl.position.y + 1.5, girl.position.z + 3);
   }
 
   if (now - lastObjectiveUpdate >= GUIDANCE_UPDATE_INTERVAL) {
     lastObjectiveUpdate = now;
     updateObjectiveGuide();
+    updateQuestBanner();
   }
   if (state.phase !== 'start' && now - lastMinimapUpdate >= MINIMAP_UPDATE_INTERVAL) {
     lastMinimapUpdate = now;
-    hudView.drawMinimap({ world, chests, player: girl, now });
+    hudView.drawMinimap({
+      world, chests, player: girl, now,
+      dog: dogFollowing ? dog : null,
+      photos: PHOTO_SPOTS.filter(spot => !photoTaken.has(spot.name)),
+    });
   }
   if (composer) composer.render();
   else renderer.render(scene, camera);
+  const frameMs = performance.now() - frameStart;
+  if (frameMs > 90) skipNextFrame = true;
+  if (composer && frameMs > 120) {
+    composer.dispose();
+    composer = null;
+  }
 }
 
 // Read-only landmark inspection views used for visual QA. Normal gameplay is
@@ -1625,15 +1891,18 @@ function loop() {
 // to review a remodelled object without walking across the whole map.
 const inspectKey = new URLSearchParams(location.search).get('inspect');
 const inspectViews = {
-  clock:     { target: [-68, 12, 118], camera: [-68, 14, 96] },
-  pier:      { target: [-86, 5, 120],  camera: [-86, 11, 99] },
-  space:     { target: [-20, 5, 116],  camera: [-20, 11, 96] },
-  peninsula: { target: [-24, 12, 82],  camera: [-24, 16, 101] },
-  isquare:   { target: [-20, 23, 38],  camera: [-4, 25, 20] },
-  k11:       { target: [42, 12, 114],  camera: [76, 21, 80] },
-  cultural:  { target: [-48, 6, 117],  camera: [-48, 14, 96] },
-  heritage:  { target: [-48, 9, 84],   camera: [-39, 14, 99] },
-  harbour:   { target: [-80, 8, 40],   camera: [-54, 17, 40] },
+  clock:     { target: [-68, 18, 118], camera: [-68, 24, 80] },
+  pier:      { target: [-86, 6, 120],  camera: [-86, 14, 90] },
+  space:     { target: [-16, 8, 116],  camera: [-16, 16, 84] },
+  peninsula: { target: [-24, 14, 82],  camera: [-24, 18, 114] },
+  isquare:   { target: [-20, 22, 38],  camera: [10, 28, 6] },
+  k11:       { target: [48, 16, 110],  camera: [90, 28, 68] },
+  cultural:  { target: [-48, 8, 117],  camera: [-48, 16, 86] },
+  heritage:  { target: [-46, 10, 84],  camera: [-24, 16, 110] },
+  mosque:    { target: [-18, 10, -4],  camera: [10, 16, 24] },
+  park:      { target: [-38, 3, -18],  camera: [-18, 12, 6] },
+  ocean:     { target: [-108, 4, 48],  camera: [-88, 14, 72] },
+  harbour:   { target: [-80, 10, 40],  camera: [-48, 22, 8] },
   dog:       { target: [-11, .6, -20],  camera: [-11, 4, -27], player: [-14, 0, -22], showHud: true },
   chest:     { target: [-68, 1, 110],   camera: [-68, 4, 102], player: [-65, 0, 107], showHud: true },
   npc:       { target: [-38, 1.5, -8],   camera: [-38, 4, -15], player: [-41, 0, -10], showHud: true },
@@ -1641,7 +1910,6 @@ const inspectViews = {
 if (inspectViews[inspectKey]) {
   const view = inspectViews[inspectKey];
   window.__camLock = true;
-  state.phase = 'play';
   $('start-screen').classList.add('hidden');
   if (!view.showHud) $('hud').classList.add('hidden');
   else $('hud').classList.remove('hidden');
@@ -1649,19 +1917,17 @@ if (inspectViews[inspectKey]) {
   camera.position.set(...view.camera);
   camera.lookAt(...view.target);
 }
-loop();
 
-// Automated browser-test hook. Keeping the test surface in one object lets the
-// checks exercise real gameplay paths without duplicating game logic.
 window.__dg = {
   girl, chests, state, openChest, camera, renderer, scene, world, gpuCapabilities, rendererPreset,
   coins, stars, gifts, foodStalls, npcs, dog, luckyCat, quiz, MTR_STATIONS,
   doInteract, activatePointerTarget, checkPickups, rideMtr, showVictory, input, interactions,
-  cameraOrbit, settings,
+  cameraOrbit, settings, album, STAMP_DEFS, PHOTO_SPOTS,
   get dogFollowing() { return dogFollowing; },
   get catRubbed() { return catRubbed; },
   get mtrBusy() { return mtrBusy; },
 };
+loop();
 window.addEventListener('beforeunload', () => {
   quiz.dispose();
   world.systems.dispose();

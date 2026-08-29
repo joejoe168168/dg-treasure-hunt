@@ -148,7 +148,7 @@ export function createWorld(scene) {
   const moon = new THREE.DirectionalLight(0xbfd0ff, 1.2);
   moon.position.set(-60, 90, -40);
   moon.castShadow = true;
-  moon.shadow.mapSize.set(2048, 2048);
+  moon.shadow.mapSize.set(LOW_FX ? 1024 : 2048, LOW_FX ? 1024 : 2048);
   moon.shadow.camera.left = -110; moon.shadow.camera.right = 110;
   moon.shadow.camera.top = 130; moon.shadow.camera.bottom = -110;
   moon.shadow.camera.far = 300;
@@ -158,11 +158,21 @@ export function createWorld(scene) {
   const warm = new THREE.DirectionalLight(0xffb070, 0.35);
   warm.position.set(50, 40, 60);
   scene.add(warm);
+  const rim = new THREE.DirectionalLight(0x88a8ff, 0.18);
+  rim.position.set(0, 30, 140);
+  scene.add(rim);
 
   scene.background = new THREE.Color();
   scene.fog = new THREE.Fog(0x1a1f4d, 70, 250);
   const nightOnly = [];     // stars, light beams… hidden in morning mode
-  const tintables = { roads: [], ground: null, walk: null };   // ground materials to re-tint
+  const tintables = { roads: [], ground: null, walk: null, sun: null };
+
+  {
+    const sun = new THREE.Mesh(new THREE.SphereGeometry(8, 12, 10),
+      new THREE.MeshBasicMaterial({ color: 0xfff1c2, fog: false }));
+    sun.position.set(70, 110, 50); scene.add(sun);
+    tintables.sun = sun;
+  }
 
   // 🌅 morning / 🌃 night — switchable any time
   world.setMorning = (on) => {
@@ -174,9 +184,15 @@ export function createWorld(scene) {
       moon.color.set(0xfff3da); moon.intensity = 2.6;   // the sun!
       moon.position.set(70, 110, 50);
       warm.intensity = 0.12;
-      tintables.ground?.color.set(0x8e9388);
-      tintables.walk?.color.set(0xa9aeb6);
+      rim.color.set(0xffe0b0); rim.intensity = 0.22;
+      tintables.ground?.color.set(0xc4c0b4);
+      tintables.walk?.color.set(0xc9c6be);
       tintables.roads.forEach(m => m.color.setRGB(2.1, 2.1, 2.1));   // brighten road texture
+      if (tintables.sun) {
+        tintables.sun.material.color.set(0xfff4c8);
+        tintables.sun.position.set(90, 130, 70);
+        tintables.sun.scale.setScalar(1.35);
+      }
     } else {
       scene.background.set(0x1a1f4d);
       scene.fog.color.set(0x1a1f4d);
@@ -186,9 +202,15 @@ export function createWorld(scene) {
       moon.color.set(0xbfd0ff); moon.intensity = 1.2;
       moon.position.set(-60, 90, -40);
       warm.intensity = 0.35;
+      rim.color.set(0x88a8ff); rim.intensity = 0.18;
       tintables.ground?.color.set(0x3a3f52);
       tintables.walk?.color.set(0x4d5266);
       tintables.roads.forEach(m => m.color.setRGB(1, 1, 1));
+      if (tintables.sun) {
+        tintables.sun.material.color.set(0xe8eefc);
+        tintables.sun.position.set(-80, 120, -50);
+        tintables.sun.scale.setScalar(.55);
+      }
     }
     nightOnly.forEach(o => { o.visible = !on; });
     world.isMorning = on;
@@ -211,9 +233,24 @@ export function createWorld(scene) {
   }
 
   // ---------------- ground ----------------
+  const pavementTex = (() => {
+    const c = document.createElement('canvas'); c.width = c.height = 256;
+    const g = c.getContext('2d'); g.fillStyle = '#6a6d74'; g.fillRect(0, 0, 256, 256);
+    g.strokeStyle = 'rgba(30,30,34,.22)'; g.lineWidth = 2;
+    for (let y = 0; y <= 256; y += 32) { g.beginPath(); g.moveTo(0, y); g.lineTo(256, y); g.stroke(); }
+    for (let x = 0; x <= 256; x += 32) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 256); g.stroke(); }
+    for (let i = 0; i < 400; i++) {
+      const v = 80 + (i % 40);
+      g.fillStyle = `rgba(${v},${v},${v + 4},.12)`;
+      g.fillRect((i * 73) % 256, (i * 41) % 256, 2, 2);
+    }
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(28, 30); t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  })();
   const ground = new THREE.Mesh(
     new THREE.PlaneGeometry(280, 300),
-    new THREE.MeshStandardMaterial({ color: 0x3a3f52, roughness: 1 }));
+    new THREE.MeshStandardMaterial({ map: pavementTex, color: 0x3a3f52, roughness: 1 }));
   tintables.ground = ground.material;
   ground.rotation.x = -Math.PI / 2;
   ground.position.set(0, -0.02, 10);
@@ -221,9 +258,10 @@ export function createWorld(scene) {
   scene.add(ground);
 
   // ---------------- roads ----------------
+  const roadTexV = roadTexture(true), roadTexH = roadTexture(false);
+  roadTexV.repeat.set(1.2, 14); roadTexH.repeat.set(14, 1.2);
   for (const r of ROADS) {
-    const tex = roadTexture(r.vertical);
-    tex.repeat.set(Math.max(1, r.w / 14), Math.max(1, r.d / 14));
+    const tex = r.vertical ? roadTexV : roadTexH;
     const m = new THREE.Mesh(new THREE.PlaneGeometry(r.w, r.d),
       new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 }));
     tintables.roads.push(m.material);
@@ -269,6 +307,9 @@ export function createWorld(scene) {
   const buildMats = {};
   const facadeDetails = [];
   const balconyDetails = [];
+  const shopfronts = [];
+  const hangingSigns = [];
+  const shopColors = [0x7a2430, 0x1e4a6e, 0x2d6b4f, 0x6b3a1e, 0x3a2a58, 0x8a5a18];
   for (const b of blocks) {
     let cx = b.x0;
     while (cx < b.x1 - 6) {
@@ -313,6 +354,24 @@ export function createWorld(scene) {
             tank.position.set(cx + w / 2 + (rng() - 0.5) * 3, h + 1, cz + d / 2 + (rng() - 0.5) * 3);
             scene.add(tank);
           }
+          // Ground-floor shopfront facing the nearest street — the HK street-level identity.
+          if (shopfronts.length < 48) {
+            const faceNathan = Math.abs(cx + w / 2) < 22;
+            shopfronts.push({
+              x: cx + w / 2,
+              z: cz + 1.35,
+              w: Math.min(6.5, w - 3.2),
+              color: shopColors[(rng() * shopColors.length) | 0],
+            });
+            if (faceNathan && hangingSigns.length < 22) {
+              hangingSigns.push({
+                x: (cx + w / 2) > 0 ? cx + w / 2 - (w / 2) + 1.1 : cx + w / 2 + (w / 2) - 1.1,
+                z: cz + d / 2,
+                y: 5.5 + rng() * 3,
+                hue: shopColors[(rng() * shopColors.length) | 0],
+              });
+            }
+          }
         }
         cz += d + 1.5;
       }
@@ -341,6 +400,40 @@ export function createWorld(scene) {
       dummy.updateMatrix(); balconies.setMatrixAt(index, dummy.matrix);
     });
     balconies.castShadow = true; scene.add(balconies);
+  }
+  if (shopfronts.length) {
+    const awning = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(1, .22, 1.4),
+      new THREE.MeshStandardMaterial({ color: 0xc94f4f, roughness: .8 }),
+      shopfronts.length);
+    const glass = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(1, 2.2, .12),
+      new THREE.MeshStandardMaterial({ color: 0x1a3040, emissive: 0x122830, emissiveIntensity: .55, roughness: .25, metalness: .4 }),
+      shopfronts.length);
+    const dummy = new THREE.Object3D();
+    shopfronts.forEach((s, i) => {
+      dummy.position.set(s.x, 3.15, s.z); dummy.scale.set(s.w, 1, 1); dummy.updateMatrix();
+      awning.setMatrixAt(i, dummy.matrix);
+      dummy.position.set(s.x, 1.55, s.z + .15); dummy.scale.set(s.w * .92, 1, 1); dummy.updateMatrix();
+      glass.setMatrixAt(i, dummy.matrix);
+      awning.setColorAt(i, new THREE.Color(s.color));
+    });
+    if (awning.instanceColor) awning.instanceColor.needsUpdate = true;
+    scene.add(awning, glass);
+  }
+  if (hangingSigns.length) {
+    const signs = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(.18, 2.6, .9),
+      new THREE.MeshBasicMaterial({ color: 0xff5c5c }),
+      hangingSigns.length);
+    const dummy = new THREE.Object3D();
+    hangingSigns.forEach((s, i) => {
+      dummy.position.set(s.x, s.y, s.z); dummy.updateMatrix();
+      signs.setMatrixAt(i, dummy.matrix);
+      signs.setColorAt(i, new THREE.Color(s.hue));
+    });
+    if (signs.instanceColor) signs.instanceColor.needsUpdate = true;
+    scene.add(signs);
   }
 
   // ---------------- neon signs over Nathan Road ----------------
@@ -431,25 +524,78 @@ export function createWorld(scene) {
       scene.add(tree);
       addCollider(tx, tz, 1.0, 1.0);
     }
-    // flamingo pond
-    const pond = new THREE.Mesh(new THREE.CircleGeometry(5, 20),
+    // flamingo / Bird Lake
+    const pond = new THREE.Mesh(new THREE.CircleGeometry(5.4, 22),
       new THREE.MeshStandardMaterial({ color: 0x3a7fc4, roughness: 0.2, metalness: 0.4 }));
     pond.rotation.x = -Math.PI / 2;
     pond.position.set(-33, 0.04, -10);
     scene.add(pond);
-    for (let i = 0; i < 5; i++) {
+    const reedM = new THREE.MeshToonMaterial({ color: 0x4a7a38 });
+    for (let i = 0; i < 8; i++) {
+      const reed = new THREE.Mesh(new THREE.CylinderGeometry(.04, .06, 1.4, 4), reedM);
+      const a = i / 8 * Math.PI * 2;
+      reed.position.set(-33 + Math.cos(a) * 5.1, .7, -10 + Math.sin(a) * 5.1); scene.add(reed);
+    }
+    for (let i = 0; i < 6; i++) {
       const fl = new THREE.Group();
       const bodyF = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 8), new THREE.MeshToonMaterial({ color: 0xff8fb6 }));
       bodyF.position.y = 0.7; bodyF.scale.set(1.2, 1, 1);
       const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.6, 6), new THREE.MeshToonMaterial({ color: 0xff8fb6 }));
       neck.position.set(0.25, 1.05, 0); neck.rotation.z = -0.4;
+      const head = new THREE.Mesh(new THREE.SphereGeometry(.08, 6, 6), new THREE.MeshToonMaterial({ color: 0xff8fb6 }));
+      head.position.set(.42, 1.32, 0);
+      const beak = new THREE.Mesh(new THREE.ConeGeometry(.04, .18, 4), new THREE.MeshToonMaterial({ color: 0xf2c14b }));
+      beak.rotation.z = -1.2; beak.position.set(.55, 1.28, 0);
       const legF = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.7, 4), new THREE.MeshToonMaterial({ color: 0xe06a90 }));
       legF.position.y = 0.35;
-      fl.add(bodyF, neck, legF);
+      fl.add(bodyF, neck, head, beak, legF);
       const a = rng() * Math.PI * 2, r = 2 + rng() * 2.4;
       fl.position.set(-33 + Math.cos(a) * r, 0, -10 + Math.sin(a) * r);
       fl.rotation.y = rng() * Math.PI * 2;
       scene.add(fl);
+    }
+    // Chinese Garden pavilion — red columns, green flying-eave roof, pond.
+    {
+      const pav = new THREE.Group();
+      const red = new THREE.MeshToonMaterial({ color: 0xb03030 });
+      const roofM = new THREE.MeshToonMaterial({ color: 0x2d6b4f });
+      const floor = new THREE.Mesh(new THREE.CylinderGeometry(3.4, 3.6, .28, 8), new THREE.MeshStandardMaterial({ color: 0xc2b49a }));
+      floor.position.y = .14; pav.add(floor);
+      for (let i = 0; i < 8; i++) {
+        const a = i / 8 * Math.PI * 2;
+        const col = new THREE.Mesh(new THREE.CylinderGeometry(.16, .18, 3.4, 8), red);
+        col.position.set(Math.cos(a) * 2.4, 1.85, Math.sin(a) * 2.4); pav.add(col);
+      }
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(4.2, 2.2, 8), roofM);
+      roof.position.y = 4.4; pav.add(roof);
+      const ridge = new THREE.Mesh(new THREE.SphereGeometry(.28, 8, 6), new THREE.MeshToonMaterial({ color: 0xe8b54a }));
+      ridge.position.y = 5.55; pav.add(ridge);
+      pav.position.set(-46, 0, -26); scene.add(pav);
+      addCollider(-46, -26, 6.5, 6.5);
+      const lily = new THREE.Mesh(new THREE.CircleGeometry(2.6, 16),
+        new THREE.MeshStandardMaterial({ color: 0x3a7fc4, roughness: .25, metalness: .35 }));
+      lily.rotation.x = -Math.PI / 2; lily.position.set(-46, .04, -18); scene.add(lily);
+    }
+    // Heritage Discovery Centre — former Whitfield Barracks, red brick.
+    {
+      const brick = new THREE.MeshStandardMaterial({ color: 0x9a4a38, roughness: .9 });
+      for (const [bx, bz] of [[-42, 0], [-42, 8]]) {
+        const blk = new THREE.Mesh(new THREE.BoxGeometry(10, 5.5, 6), brick);
+        blk.position.set(bx, 2.75, bz); blk.castShadow = true; scene.add(blk);
+        addCollider(bx, bz, 10, 6);
+        const roof = new THREE.Mesh(new THREE.BoxGeometry(10.6, .4, 6.5), new THREE.MeshStandardMaterial({ color: 0x5a4438 }));
+        roof.position.set(bx, 5.7, bz); scene.add(roof);
+      }
+    }
+    // Fountain near the Nathan Road gate.
+    {
+      const basin = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.4, .5, 16), new THREE.MeshStandardMaterial({ color: 0xb9b2a4 }));
+      basin.position.set(-26, .25, -6); scene.add(basin);
+      const water = new THREE.Mesh(new THREE.CircleGeometry(1.9, 16), new THREE.MeshStandardMaterial({ color: 0x4a90d9, roughness: .2, metalness: .45 }));
+      water.rotation.x = -Math.PI / 2; water.position.set(-26, .52, -6); scene.add(water);
+      const jet = new THREE.Mesh(new THREE.ConeGeometry(.28, 2.6, 8), new THREE.MeshBasicMaterial({ color: 0xbfe0ff, transparent: true, opacity: .65 }));
+      jet.position.set(-26, 1.8, -6); scene.add(jet);
+      world.systems.add('decorative', (dt, t) => { jet.scale.y = 1 + Math.sin(t * 4.5) * .2; });
     }
     // park gate sign
     const gate = new THREE.Mesh(new THREE.BoxGeometry(6, 0.8, 0.4),
@@ -540,10 +686,13 @@ export function createWorld(scene) {
     const rail = new THREE.Mesh(new THREE.BoxGeometry(230, 0.1, 0.1), railM);
     rail.position.set(-3, 1.05, 129.5);
     scene.add(rail);
-    for (let x = -115; x <= 110; x += 4) {
-      const p = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 1.05, 5), railM);
-      p.position.set(x, 0.53, 129.5);
-      scene.add(p);
+    {
+      const posts = [];
+      for (let x = -115; x <= 110; x += 4) posts.push(x);
+      const inst = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.05, 0.05, 1.05, 5), railM, posts.length);
+      const dummy = new THREE.Object3D();
+      posts.forEach((x, i) => { dummy.position.set(x, 0.53, 129.5); dummy.updateMatrix(); inst.setMatrixAt(i, dummy.matrix); });
+      scene.add(inst);
     }
 
     // Instanced benches and planters keep the waterfront detailed without a draw-call spike.
@@ -574,7 +723,11 @@ export function createWorld(scene) {
     scene.add(water);
     const wPos = waterGeo.attributes.position;
     const wBase = wPos.array.slice();
+    let waterFrame = 0;
     world.systems.add('decorative', (dt, t) => {
+      if (LOW_FX) return;
+      waterFrame++;
+      if (waterFrame % 2) return;
       for (let i = 0; i < wPos.count; i++) {
         const x = wBase[i * 3], y = wBase[i * 3 + 1];
         wPos.array[i * 3 + 2] = Math.sin(x * 0.12 + t * 1.3) * 0.35 + Math.cos(y * 0.2 + t * 0.9) * 0.3;
@@ -582,14 +735,13 @@ export function createWorld(scene) {
       wPos.needsUpdate = true;
     });
 
-    // HK Island skyline across the water
+    // HK Island skyline across the water — one shared façade texture, not 26 unique maps.
+    const skylineMat = new THREE.MeshStandardMaterial({
+      map: buildingTexture('#1c2247', 0.7), emissive: 0x0c1030, roughness: 0.9,
+    });
     for (let i = 0; i < 26; i++) {
       const w = 6 + rng() * 10, h = 18 + rng() * 45;
-      const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, 8),
-        new THREE.MeshStandardMaterial({
-          map: buildingTexture('#1c2247', 0.7),
-          emissive: 0x0c1030, roughness: 0.9,
-        }));
+      const b = new THREE.Mesh(new THREE.BoxGeometry(w, h, 8), skylineMat);
       b.position.set(-130 + i * 10.5 + rng() * 4, h / 2 - 2, 248 + rng() * 14);
       scene.add(b);
     }
@@ -1106,6 +1258,40 @@ export function createWorld(scene) {
           cur.x += dx * f; cur.y += dy * f; cur.z += dz * f;
         }
         segs[i].position.y = Math.max(0.5, cur.y);
+      }
+    });
+  }
+
+  // ---------------- sidewalk pedestrians (Nathan Road) ----------------
+  {
+    const shirts = [0x2b3f8c, 0xd23a3a, 0x2d6b4f, 0xffd35c, 0x7db8ff, 0xf2efe6];
+    const walkers = [];
+    const n = LOW_FX ? 4 : 7;
+    for (let i = 0; i < n; i++) {
+      const p = new THREE.Group();
+      const body = new THREE.Mesh(new THREE.CapsuleGeometry(.18, .55, 3, 6),
+        new THREE.MeshToonMaterial({ color: shirts[i % shirts.length] }));
+      body.position.y = 1.05; p.add(body);
+      const head = new THREE.Mesh(new THREE.SphereGeometry(.16, 8, 6),
+        new THREE.MeshToonMaterial({ color: 0xf0c8a8 }));
+      head.position.y = 1.55; p.add(head);
+      scene.add(p);
+      walkers.push({
+        m: p,
+        side: i % 2 ? 1 : -1,
+        z: -90 + i * 24,
+        speed: 1.6 + (i % 3) * .35,
+        dir: i % 2 ? 1 : -1,
+      });
+    }
+    world.systems.add('decorative', (dt) => {
+      for (const w of walkers) {
+        w.z += w.speed * w.dir * dt;
+        if (w.z > 95) { w.z = 95; w.dir = -1; }
+        if (w.z < -95) { w.z = -95; w.dir = 1; }
+        w.m.position.set(w.side * 10.2, 0, w.z);
+        w.m.rotation.y = w.dir > 0 ? 0 : Math.PI;
+        w.m.position.y = Math.abs(Math.sin(w.z * 2.2)) * .04;
       }
     });
   }

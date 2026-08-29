@@ -30,8 +30,9 @@ export const sfx = {
   unlock() { ac(); },  // call on first user gesture
 
   coin() {
-    tone(988, 0.09, 'square', 0.1);
-    tone(1319, 0.18, 'square', 0.1, 0.08);
+    tone(988, 0.07, 'square', 0.11);
+    tone(1319, 0.12, 'square', 0.12, 0.05);
+    tone(1568, 0.18, 'triangle', 0.08, 0.1);
   },
   chestFound() {
     [523, 659, 784, 1047].forEach((f, i) => tone(f, 0.16, 'triangle', 0.16, i * 0.09));
@@ -71,6 +72,14 @@ export const sfx = {
   firework() {
     tone(300, 0.5, 'sine', 0.1, 0, 1200);                       // whistle up
     [880, 1175, 988, 1319].forEach((f, i) => tone(f, 0.3, 'triangle', 0.12, 0.5 + i * 0.06));
+  },
+  fanfare() {
+    [523, 659, 784, 1047, 784, 1047, 1319, 1568].forEach((f, i) =>
+      tone(f, 0.2, 'triangle', 0.15, i * 0.09));
+  },
+  camera() {
+    tone(1480, 0.04, 'square', 0.08);
+    tone(880, 0.12, 'sine', 0.06, 0.05);
   },
 };
 

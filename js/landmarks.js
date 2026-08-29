@@ -41,30 +41,104 @@ function addSign(scene, text, x, y, z, w, color, ry = 0, bg) {
   return sign;
 }
 
+function makeCanvasTexture(draw, size = 256) {
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  draw(c.getContext('2d'), c);
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 function brickMaterial(base = '#a9573e', mortar = '#d6c8b7') {
-  const c = document.createElement('canvas'); c.width = 256; c.height = 256;
-  const g = c.getContext('2d'); g.fillStyle = mortar; g.fillRect(0, 0, 256, 256);
-  const shades = [base, '#914832', '#b66347', '#9f5038'];
-  for (let y = 0, row = 0; y < 256; y += 18, row++) {
-    for (let x = -24 + (row % 2) * 24; x < 256; x += 48) {
-      g.fillStyle = shades[Math.abs((x / 24 + row * 3) | 0) % shades.length];
-      g.fillRect(x + 1, y + 1, 45, 15);
-      g.fillStyle = 'rgba(255,255,255,.08)'; g.fillRect(x + 2, y + 2, 42, 2);
+  const tex = makeCanvasTexture((g) => {
+    g.fillStyle = mortar; g.fillRect(0, 0, 256, 256);
+    const shades = [base, '#914832', '#b66347', '#9f5038'];
+    for (let y = 0, row = 0; y < 256; y += 18, row++) {
+      for (let x = -24 + (row % 2) * 24; x < 256; x += 48) {
+        g.fillStyle = shades[Math.abs((x / 24 + row * 3) | 0) % shades.length];
+        g.fillRect(x + 1, y + 1, 45, 15);
+        g.fillStyle = 'rgba(255,255,255,.08)'; g.fillRect(x + 2, y + 2, 42, 2);
+      }
     }
-  }
-  const tex = new THREE.CanvasTexture(c); tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
-  tex.repeat.set(1.5, 6); tex.colorSpace = THREE.SRGBColorSpace;
+  });
+  tex.repeat.set(1.5, 6);
   return new THREE.MeshStandardMaterial({ map: tex, roughness: .92, bumpMap: tex, bumpScale: .06 });
 }
 
+function limestoneMaterial() {
+  const tex = makeCanvasTexture((g) => {
+    g.fillStyle = '#d8c9b0'; g.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 90; i++) {
+      g.fillStyle = `rgba(${200 + (i % 30)},${180 + (i % 22)},${150 + (i % 18)},.18)`;
+      g.fillRect((i * 47) % 256, (i * 91) % 256, 18 + (i % 20), 10 + (i % 12));
+    }
+    g.strokeStyle = 'rgba(120,100,80,.22)'; g.lineWidth = 1;
+    for (let y = 0; y < 256; y += 32) { g.beginPath(); g.moveTo(0, y); g.lineTo(256, y); g.stroke(); }
+    for (let x = 0; x < 256; x += 48) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, 256); g.stroke(); }
+  });
+  tex.repeat.set(2, 3);
+  return new THREE.MeshStandardMaterial({ map: tex, roughness: .88, bumpMap: tex, bumpScale: .035 });
+}
+
+function livingWallMaterial() {
+  const tex = makeCanvasTexture((g) => {
+    g.fillStyle = '#1f5a32'; g.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 220; i++) {
+      const greens = ['#2e7a40', '#3d8f4e', '#246334', '#4ea45c', '#1a4a28'];
+      g.fillStyle = greens[i % greens.length];
+      g.beginPath();
+      g.ellipse((i * 53) % 256, (i * 79) % 256, 8 + (i % 7), 11 + (i % 9), 0, 0, 7);
+      g.fill();
+    }
+    for (let i = 0; i < 18; i++) {
+      g.fillStyle = i % 2 ? '#e07aa0' : '#f0c45c';
+      g.beginPath(); g.arc((i * 97) % 256, (i * 61) % 256, 2.2, 0, 7); g.fill();
+    }
+  });
+  tex.repeat.set(1.4, 2.4);
+  return new THREE.MeshStandardMaterial({ map: tex, roughness: .95, emissive: 0x0a2210, emissiveIntensity: .12 });
+}
+
+function ledGlassMaterial(tint = '#1a3d58') {
+  const tex = makeCanvasTexture((g) => {
+    g.fillStyle = tint; g.fillRect(0, 0, 256, 256);
+    g.fillStyle = 'rgba(255,255,255,.08)';
+    for (let y = 8; y < 256; y += 22) g.fillRect(0, y, 256, 2);
+    for (let x = 10; x < 256; x += 28) g.fillRect(x, 0, 2, 256);
+    for (let y = 14; y < 250; y += 44) {
+      for (let x = 16; x < 250; x += 28) {
+        if ((x + y) % 3 === 0) {
+          g.fillStyle = ['#7fe7ff', '#ffe08a', '#ff8fb6', '#9dffc2'][(x / 28 | 0) % 4];
+          g.globalAlpha = .45; g.fillRect(x, y, 14, 12); g.globalAlpha = 1;
+        }
+      }
+    }
+  });
+  tex.repeat.set(2, 4);
+  return new THREE.MeshStandardMaterial({
+    map: tex, roughness: .28, metalness: .42, emissive: 0x123848, emissiveIntensity: .55,
+  });
+}
+
+const frameMats = new Map();
+const UNIT_PLANE = new THREE.PlaneGeometry(1, 1);
+const UNIT_BOX = new THREE.BoxGeometry(1, 1, 1);
 function framedWindow(parent, x, y, z, w, h, ry = 0, glow = 0x9ccce0) {
   const group = new THREE.Group();
-  const glass = new THREE.Mesh(new THREE.PlaneGeometry(w, h),
-    new THREE.MeshStandardMaterial({ color: glow, emissive: glow, emissiveIntensity: .18, metalness: .55, roughness: .18 }));
+  if (!frameMats.has(glow)) {
+    frameMats.set(glow, {
+      glass: new THREE.MeshStandardMaterial({ color: glow, emissive: glow, emissiveIntensity: .18, metalness: .55, roughness: .18 }),
+      frame: new THREE.MeshStandardMaterial({ color: 0xe5ddcf, roughness: .65 }),
+    });
+  }
+  const mats = frameMats.get(glow);
+  const glass = new THREE.Mesh(UNIT_PLANE, mats.glass);
+  glass.scale.set(w, h, 1);
   group.add(glass);
-  const frameM = new THREE.MeshStandardMaterial({ color: 0xe5ddcf, roughness: .65 });
   for (const [fw, fh, fx, fy] of [[w + .18, .11, 0, h / 2], [w + .18, .11, 0, -h / 2], [.11, h, -w / 2, 0], [.11, h, w / 2, 0], [.07, h, 0, 0]]) {
-    const f = new THREE.Mesh(new THREE.BoxGeometry(fw, fh, .08), frameM); f.position.set(fx, fy, .04); group.add(f);
+    const f = new THREE.Mesh(UNIT_BOX, mats.frame);
+    f.scale.set(fw, fh, .08); f.position.set(fx, fy, .04); group.add(f);
   }
   group.position.set(x, y, z); group.rotation.y = ry; parent.add(group); return group;
 }
@@ -84,65 +158,68 @@ export function addLandmarks(scene, world, { buildingTexture }) {
   const mark = (x, z, color, r = 5) => world.minimapItems.push({ x, z, color, r });
   const M = (color, opts = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.85, ...opts });
 
-  // ============ Clock Tower (-68, 118) ============
+  // ============ Clock Tower (-68, 118) — Edwardian red brick + octagonal belfry ============
   {
     const g = new THREE.Group();
-    const brick = brickMaterial(), stone = M(0xd9cdb8, { roughness: .72 });
-    for (let i = 0; i < 3; i++) {
-      const step = new THREE.Mesh(new THREE.BoxGeometry(8 - i * .7, .35, 8 - i * .7), stone);
+    const brick = brickMaterial('#9b3d2e', '#cbb7a4'), stone = M(0xe8ddd0, { roughness: .7 });
+    const granite = M(0xb7b0a4, { roughness: .62 });
+    for (let i = 0; i < 4; i++) {
+      const step = new THREE.Mesh(new THREE.BoxGeometry(8.4 - i * .55, .32, 8.4 - i * .55), granite);
       step.position.y = i * .28; g.add(step);
     }
-    const base = new THREE.Mesh(new THREE.BoxGeometry(6, 3, 6), stone);
-    base.position.y = 1.5; base.castShadow = true; g.add(base);
-    const shaft = new THREE.Mesh(new THREE.BoxGeometry(4.4, 20, 4.4), brick);
-    shaft.position.y = 13; shaft.castShadow = true; g.add(shaft);
-    // Pale corner quoins and arched slit windows match the real masonry rhythm.
+    const plinth = new THREE.Mesh(new THREE.BoxGeometry(6.2, 3.2, 6.2), granite);
+    plinth.position.y = 1.7; plinth.castShadow = true; g.add(plinth);
+    const shaft = new THREE.Mesh(new THREE.BoxGeometry(4.5, 18.6, 4.5), brick);
+    shaft.position.y = 12.4; shaft.castShadow = true; g.add(shaft);
     for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-      for (let y = 4.5; y < 22; y += 2.1) {
-        const q = new THREE.Mesh(new THREE.BoxGeometry(.38, .72, .38), stone);
-        q.position.set(sx * 2.18, y, sz * 2.18); g.add(q);
-      }
+      const quoin = new THREE.Mesh(new THREE.BoxGeometry(.42, 18.6, .42), stone);
+      quoin.position.set(sx * 2.28, 12.4, sz * 2.28); g.add(quoin);
     }
-    for (const y of [6, 10.5, 15]) {
-      framedWindow(g, 0, y, 2.23, 1.05, 1.7, 0, 0x6e8ea0);
-      framedWindow(g, 2.23, y, 0, 1.05, 1.7, Math.PI / 2, 0x6e8ea0);
+    for (const y of [6.2, 10.4, 14.8]) {
+      framedWindow(g, 0, y, 2.28, .95, 1.55, 0, 0x6e8ea0);
+      framedWindow(g, 2.28, y, 0, .95, 1.55, Math.PI / 2, 0x6e8ea0);
+      framedWindow(g, 0, y, -2.28, .95, 1.55, Math.PI, 0x6e8ea0);
+      framedWindow(g, -2.28, y, 0, .95, 1.55, -Math.PI / 2, 0x6e8ea0);
     }
-    const top = new THREE.Mesh(new THREE.BoxGeometry(5, 2.5, 5), stone);
-    top.position.y = 24.2; g.add(top);
-    const dome = new THREE.Mesh(new THREE.SphereGeometry(2.2, LOW_FX ? 8 : 12, LOW_FX ? 6 : 10, 0, Math.PI * 2, 0, Math.PI / 2), stone);
-    dome.position.y = 25.5; g.add(dome);
-    const spire = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 4, 6), stone);
-    spire.position.y = 29; g.add(spire);
+    const cornice = new THREE.Mesh(new THREE.BoxGeometry(5.6, .55, 5.6), stone); cornice.position.y = 22; g.add(cornice);
+    const clockBand = new THREE.Mesh(new THREE.BoxGeometry(5.1, 4.2, 5.1), brick); clockBand.position.y = 24.3; g.add(clockBand);
+    const balcony = new THREE.Mesh(new THREE.BoxGeometry(6.4, .28, 6.4), stone); balcony.position.y = 22.4; g.add(balcony);
     const clockTex = (() => {
-      const c = document.createElement('canvas'); c.width = c.height = 64;
+      const c = document.createElement('canvas'); c.width = c.height = 128;
       const gg = c.getContext('2d');
-      gg.fillStyle = '#fff8e0'; gg.beginPath(); gg.arc(32, 32, 30, 0, 7); gg.fill();
-      gg.strokeStyle = '#222'; gg.lineWidth = 3;
+      gg.fillStyle = '#f4ecd4'; gg.beginPath(); gg.arc(64, 64, 60, 0, 7); gg.fill();
+      gg.strokeStyle = '#1a1510'; gg.lineWidth = 5; gg.stroke();
+      gg.lineWidth = 3;
       for (let n = 0; n < 12; n++) {
         const a = n / 12 * Math.PI * 2 - Math.PI / 2;
-        gg.beginPath(); gg.moveTo(32 + Math.cos(a) * 23, 32 + Math.sin(a) * 23);
-        gg.lineTo(32 + Math.cos(a) * 28, 32 + Math.sin(a) * 28); gg.stroke();
+        gg.beginPath(); gg.moveTo(64 + Math.cos(a) * 46, 64 + Math.sin(a) * 46);
+        gg.lineTo(64 + Math.cos(a) * 56, 64 + Math.sin(a) * 56); gg.stroke();
       }
-      gg.beginPath(); gg.moveTo(32, 32); gg.lineTo(32, 12); gg.stroke();
-      gg.beginPath(); gg.moveTo(32, 32); gg.lineTo(46, 36); gg.stroke();
+      gg.lineWidth = 5;
+      gg.beginPath(); gg.moveTo(64, 64); gg.lineTo(64, 22); gg.stroke();
+      gg.lineWidth = 4;
+      gg.beginPath(); gg.moveTo(64, 64); gg.lineTo(94, 72); gg.stroke();
+      gg.fillStyle = '#1a1510'; gg.beginPath(); gg.arc(64, 64, 4, 0, 7); gg.fill();
       const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
     })();
     for (let i = 0; i < 4; i++) {
-      const face = new THREE.Mesh(new THREE.CircleGeometry(1.5, LOW_FX ? 12 : 20), new THREE.MeshBasicMaterial({ map: clockTex }));
-      face.position.y = 21.5;
-      if (i === 0) face.position.z = 2.25;
-      if (i === 1) { face.position.z = -2.25; face.rotation.y = Math.PI; }
-      if (i === 2) { face.position.x = 2.25; face.rotation.y = Math.PI / 2; }
-      if (i === 3) { face.position.x = -2.25; face.rotation.y = -Math.PI / 2; }
+      const face = new THREE.Mesh(new THREE.CircleGeometry(1.45, LOW_FX ? 12 : 22), new THREE.MeshBasicMaterial({ map: clockTex }));
+      face.position.y = 24.3;
+      if (i === 0) face.position.z = 2.58;
+      if (i === 1) { face.position.z = -2.58; face.rotation.y = Math.PI; }
+      if (i === 2) { face.position.x = 2.58; face.rotation.y = Math.PI / 2; }
+      if (i === 3) { face.position.x = -2.58; face.rotation.y = -Math.PI / 2; }
       g.add(face);
     }
-    // Clock-level balcony, rails and projecting cornices add a readable silhouette.
-    const balcony = new THREE.Mesh(new THREE.BoxGeometry(6.2, .35, 6.2), stone); balcony.position.y = 20; g.add(balcony);
-    const railM = M(0x3c3834, { metalness: .6, roughness: .38 });
-    for (let i = -2; i <= 2; i++) {
-      for (const z of [-3, 3]) { const r = new THREE.Mesh(new THREE.BoxGeometry(.08, .75, .08), railM); r.position.set(i * 1.2, 20.55, z); g.add(r); }
-      for (const x of [-3, 3]) { const r = new THREE.Mesh(new THREE.BoxGeometry(.08, .75, .08), railM); r.position.set(x, 20.55, i * 1.2); g.add(r); }
-    }
+    // Real tower: octagonal red-brick belfry + small concrete dome + 7 m lightning rod.
+    const belfry = new THREE.Mesh(new THREE.CylinderGeometry(1.85, 2.15, 4.2, 8), brick);
+    belfry.position.y = 28.5; belfry.castShadow = true; g.add(belfry);
+    const drum = new THREE.Mesh(new THREE.CylinderGeometry(1.55, 1.7, .7, 12), stone); drum.position.y = 30.85; g.add(drum);
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(1.7, LOW_FX ? 8 : 14, LOW_FX ? 6 : 10, 0, Math.PI * 2, 0, Math.PI / 2), stone);
+    dome.position.y = 31.15; g.add(dome);
+    const rod = new THREE.Mesh(new THREE.CylinderGeometry(.045, .045, 5.4, 5), M(0xc9c3b6, { metalness: .55, roughness: .35 }));
+    rod.position.y = 34.4; g.add(rod);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(.12, .45, 6), M(0xffd35c, { metalness: .7 })); tip.position.y = 37.2; g.add(tip);
     g.position.set(-68, 0, 118);
     scene.add(g);
     addCollider(-68, 118, 6.5, 6.5);
@@ -156,8 +233,10 @@ export function addLandmarks(scene, world, { buildingTexture }) {
     const g = new THREE.Group();
     const deck = new THREE.Mesh(new THREE.BoxGeometry(16, 1, 18), M(0x6e6a72));
     deck.position.y = 0.5; g.add(deck);
-    const hall = new THREE.Mesh(new THREE.BoxGeometry(13, 5, 13), M(0xf0ece0));
+    const hall = new THREE.Mesh(new THREE.BoxGeometry(13, 5, 13), M(0xf3efe4));
     hall.position.y = 3.5; hall.castShadow = true; g.add(hall);
+    const clockDisc = new THREE.Mesh(new THREE.CircleGeometry(.7, 16), M(0xf4ecd5));
+    clockDisc.position.set(0, 5.1, -6.55); g.add(clockDisc);
     // Deep entrance arcade, green-framed windows and pier-side railings.
     const dark = M(0x183947, { metalness: .3, roughness: .35 });
     for (const x of [-4.4, 0, 4.4]) {
@@ -191,7 +270,7 @@ export function addLandmarks(scene, world, { buildingTexture }) {
       const shape = new THREE.Shape();
       shape.moveTo(0, 0); shape.lineTo(13, 0); shape.lineTo(13, 3); shape.lineTo(0, 11); shape.closePath();
       const geo = new THREE.ExtrudeGeometry(shape, { depth: 9, bevelEnabled: false });
-      const m = new THREE.Mesh(geo, M(0xcfc4ae));
+      const m = new THREE.Mesh(geo, M(0xd7c4a8, { roughness: .84 }));
       m.castShadow = true;
       m.scale.x = sx;
       m.position.z = -4.5;
@@ -218,41 +297,55 @@ export function addLandmarks(scene, world, { buildingTexture }) {
     addSign(scene, '香港文化中心', -48, 4.2, 111.4, 10, '#ffd35c', Math.PI, '#3a3450');
   }
 
-  // ============ Space Museum (-20, 116) — the iconic white "egg" dome ============
+  // ============ Space Museum (-20, 116) — egg planetarium + west exhibition wing ============
   {
     const g = new THREE.Group();
-    const base = new THREE.Mesh(new THREE.BoxGeometry(18, 4, 12), M(0xd8c8b2));
-    base.position.y = 2; base.castShadow = true; g.add(base);
-    const dome = new THREE.Mesh(new THREE.SphereGeometry(6, LOW_FX ? 18 : 36, LOW_FX ? 12 : 22, 0, Math.PI * 2, 0, Math.PI / 2), M(0xf2efe6, { roughness: 0.46 }));
-    dome.position.y = 4; dome.castShadow = true; g.add(dome);
-    // Panel seams turn the white blob into the museum's tiled hemispherical shell.
-    const seamM = new THREE.MeshBasicMaterial({ color: 0xb8b9b6, transparent: true, opacity: .72 });
-    for (let y = 4.8; y <= 8.4; y += LOW_FX ? 2.3 : 1.15) {
-      const radius = Math.sqrt(Math.max(.1, 36 - (y - 4) * (y - 4)));
-      const seam = new THREE.Mesh(new THREE.TorusGeometry(radius, .035, 5, 64), seamM); seam.rotation.x = Math.PI / 2; seam.position.y = y; g.add(seam);
+    const shell = M(0xf4f1ea, { roughness: .42 });
+    const podium = M(0xd4c4ae, { roughness: .82 });
+    // West wing: rectangular Hall of Astronomy / gift shop, beside the egg (not under it).
+    const west = new THREE.Mesh(new THREE.BoxGeometry(11.5, 5.6, 12.5), podium);
+    west.position.set(-6.8, 2.8, .4); west.castShadow = true; g.add(west);
+    const westRoof = new THREE.Mesh(new THREE.BoxGeometry(12, .35, 13), M(0xcbbba6)); westRoof.position.set(-6.8, 5.75, .4); g.add(westRoof);
+    const ribbon = M(0x1c3d52, { metalness: .45, roughness: .22, emissive: 0x0c2430, emissiveIntensity: .4 });
+    for (const z of [-5.8, 6.6]) {
+      const band = new THREE.Mesh(new THREE.BoxGeometry(10.2, 1.15, .12), ribbon);
+      band.position.set(-6.8, 3.6, z); g.add(band);
     }
-    const radialSeams = LOW_FX ? 4 : 8;
-    for (let i = 0; i < radialSeams; i++) {
-      const seam = new THREE.Mesh(new THREE.TorusGeometry(6, .03, 5, 48, Math.PI / 2), seamM);
-      seam.rotation.set(0, i / radialSeams * Math.PI * 2, 0); seam.position.y = 4; g.add(seam);
+    // East wing: the famous egg-shaped planetarium, offset so the silhouette reads from Salisbury Road.
+    const drum = new THREE.Mesh(new THREE.CylinderGeometry(5.6, 6.1, 2.4, LOW_FX ? 16 : 28), podium);
+    drum.position.set(5.2, 1.2, 0); g.add(drum);
+    const egg = new THREE.Mesh(new THREE.SphereGeometry(6.15, LOW_FX ? 18 : 36, LOW_FX ? 14 : 24), shell);
+    egg.scale.set(1.02, 1.18, 1.06); egg.position.set(5.2, 6.35, 0); egg.castShadow = true; g.add(egg);
+    const seamM = new THREE.MeshBasicMaterial({ color: 0xc5c4bf, transparent: true, opacity: .55 });
+    const radials = LOW_FX ? 4 : 8;
+    for (let i = 0; i < radials; i++) {
+      const seam = new THREE.Mesh(new THREE.TorusGeometry(6.15, .03, 4, LOW_FX ? 16 : 32, Math.PI * .95), seamM);
+      seam.rotation.set(0, i / radials * Math.PI * 2, 0); seam.position.set(5.2, 6.35, 0); g.add(seam);
     }
-    const entrance = new THREE.Mesh(new THREE.BoxGeometry(7, 3, .35), M(0x19384c, { metalness: .5, roughness: .18 })); entrance.position.set(0, 2.1, -6.18); g.add(entrance);
-    for (const x of [-2.3, 0, 2.3]) { const mullion = new THREE.Mesh(new THREE.BoxGeometry(.15, 3, .25), M(0xbac3c5)); mullion.position.set(x, 2.1, -6.4); g.add(mullion); }
-    const planet = new THREE.Mesh(new THREE.SphereGeometry(.85, 18, 12), M(0x4c78b5, { metalness: .25 })); planet.position.set(7.2, 2.4, -4); g.add(planet);
-    const orbit = new THREE.Mesh(new THREE.TorusGeometry(1.35, .06, 6, 36), M(0xd7b960, { metalness: .7 })); orbit.rotation.x = 1.1; orbit.position.copy(planet.position); g.add(orbit);
+    // Glass lobby linking the two wings, facing Salisbury.
+    const lobby = new THREE.Mesh(new THREE.BoxGeometry(8.4, 3.4, .4), M(0x16384a, { metalness: .5, roughness: .16, emissive: 0x0d2836, emissiveIntensity: .55 }));
+    lobby.position.set(-1.2, 2.1, -6.35); g.add(lobby);
+    for (const x of [-3.4, -1.2, 1]) {
+      const mullion = new THREE.Mesh(new THREE.BoxGeometry(.12, 3.4, .22), M(0xc5d0d4)); mullion.position.set(x, 2.1, -6.55); g.add(mullion);
+    }
+    const canopy = new THREE.Mesh(new THREE.BoxGeometry(9.2, .18, 1.8), M(0xe8e0d2)); canopy.position.set(-1.2, 3.95, -6.9); g.add(canopy);
+    const planet = new THREE.Mesh(new THREE.SphereGeometry(.9, 16, 12), M(0x4c78b5, { metalness: .28, roughness: .4 }));
+    planet.position.set(-11.4, 1.7, -5.2); g.add(planet);
+    const orbit = new THREE.Mesh(new THREE.TorusGeometry(1.4, .05, 6, 28), M(0xd7b960, { metalness: .7 }));
+    orbit.rotation.x = 1.05; orbit.position.copy(planet.position); g.add(orbit);
     g.position.set(-20, 0, 116);
     scene.add(g);
-    addCollider(-20, 116, 18, 12);
+    addCollider(-20, 116, 20, 13);
     mark(-20, 116, '#f2efe6', 5);
-    addSign(scene, '香港太空館 Space Museum', -20, 5.2, 109.4, 13, '#7db8ff', Math.PI, '#1c2440');
+    addSign(scene, '香港太空館 Space Museum', -20, 5.2, 108.6, 13, '#7db8ff', Math.PI, '#1c2440');
     const up = pointLight(0x9fc8ff, 7, 24, 1.8);
-    up.position.set(-20, 12, 116); scene.add(up);
+    up.position.set(-14, 12, 116); scene.add(up);
   }
 
   // ============ The Peninsula (-24, 82) — colonial H-shape with fountain ============
   {
     const g = new THREE.Group();
-    const cream = M(0xe8dcc2);
+    const cream = M(0xeadcc4, { roughness: .78 });
     const centre = new THREE.Mesh(new THREE.BoxGeometry(12, 22, 8), cream);
     centre.position.y = 11; centre.castShadow = true; g.add(centre);
     for (const side of [-1, 1]) {
@@ -311,205 +404,251 @@ export function addLandmarks(scene, world, { buildingTexture }) {
     addSign(scene, 'The Peninsula 半島酒店', -24, 24, 84.2, 14, '#ffd35c', 0, '#3a3043');
   }
 
-  // ============ 1881 Heritage (-48, 84) — white colonial w/ arches ============
+  // ============ 1881 Heritage (-48, 84) — Victorian Marine Police HQ + round Time Ball Tower ============
   {
     const g = new THREE.Group();
-    const main = new THREE.Mesh(new THREE.BoxGeometry(14, 8, 9), M(0xf2ede2));
-    main.position.y = 4; main.castShadow = true; g.add(main);
-    const roof = new THREE.Mesh(new THREE.BoxGeometry(15, 1.2, 10), M(0x8a4438));
-    roof.position.y = 8.6; g.add(roof);
+    const cream = M(0xf3eee4, { roughness: .82 });
+    const roofM = M(0x6a3a32, { roughness: .7 });
+    const main = new THREE.Mesh(new THREE.BoxGeometry(16, 8.4, 10), cream);
+    main.position.y = 4.2; main.castShadow = true; g.add(main);
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(17.2, 1.05, 11), roofM); roof.position.y = 8.85; g.add(roof);
     for (let i = -2; i <= 2; i++) {
-      const col = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.4, 8, 8), M(0xffffff));
-      col.position.set(i * 3, 4, 4.8);
-      g.add(col);
+      const col = new THREE.Mesh(new THREE.CylinderGeometry(.32, .38, 8.2, 10), M(0xfffaf2));
+      col.position.set(i * 3.1, 4.1, 5.15); g.add(col);
+      const arch = new THREE.Mesh(new THREE.TorusGeometry(1.2, .18, 8, 18, Math.PI), cream);
+      arch.position.set(i * 3.1, 6.05, 5.22); g.add(arch);
+      framedWindow(g, i * 2.7, 3.4, -5.05, 1.3, 2.1, Math.PI, 0x8bb1bd);
     }
-    // Veranda arches, balcony balustrade and the historic time-ball tower.
-    const archM = M(0xe2d7c5, { roughness: .76 });
-    for (let i = -2; i <= 2; i++) {
-      const arch = new THREE.Mesh(new THREE.TorusGeometry(1.15, .22, 8, 22, Math.PI), archM);
-      arch.position.set(i * 3, 5.7, 4.88); g.add(arch);
-      framedWindow(g, i * 2.6, 3.2, -4.55, 1.35, 2.25, Math.PI, 0x8bb1bd);
+    const balcony = new THREE.Mesh(new THREE.BoxGeometry(16.6, .24, 1.4), M(0xcfc0a8)); balcony.position.set(0, 7.55, 5.4); g.add(balcony);
+    for (let x = -7.5; x <= 7.5; x += .85) {
+      const b = new THREE.Mesh(new THREE.BoxGeometry(.07, .7, .07), M(0xf7f1e6)); b.position.set(x, 8, 5.9); g.add(b);
     }
-    const balcony = new THREE.Mesh(new THREE.BoxGeometry(15.4, .28, 1.25), M(0xc7b69b)); balcony.position.set(0, 7.4, 5); g.add(balcony);
-    for (let x = -7; x <= 7; x += .8) { const b = new THREE.Mesh(new THREE.BoxGeometry(.07, .75, .07), M(0xede4d5)); b.position.set(x, 7.85, 5.45); g.add(b); }
-    const tower = new THREE.Mesh(new THREE.BoxGeometry(4.2, 8, 4.2), M(0xeee7d8)); tower.position.set(-3.5, 12.6, 0); tower.castShadow = true; g.add(tower);
-    const towerRoof = new THREE.Mesh(new THREE.ConeGeometry(3.2, 4, 4), M(0x55705f)); towerRoof.rotation.y = Math.PI / 4; towerRoof.position.set(-3.5, 18.5, 0); g.add(towerRoof);
-    for (const [x, z, ry] of [[-3.5, 2.15, 0], [-1.35, 0, Math.PI / 2]]) {
-      const clock = new THREE.Mesh(new THREE.CircleGeometry(.75, 20), M(0xf4ecd5)); clock.position.set(x, 14, z); clock.rotation.y = ry; g.add(clock);
+    // The real signal tower is a ROUND house with a time ball, not a square turret.
+    const round = new THREE.Mesh(new THREE.CylinderGeometry(2.15, 2.35, 11.5, LOW_FX ? 10 : 16), cream);
+    round.position.set(7.4, 9.6, -1.2); round.castShadow = true; g.add(round);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(2.35, .12, 6, 16), M(0xcfc0a8)); ring.rotation.x = Math.PI / 2; ring.position.set(7.4, 14.6, -1.2); g.add(ring);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(2.05, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), roofM);
+    cap.position.set(7.4, 15.3, -1.2); g.add(cap);
+    const mast = new THREE.Mesh(new THREE.CylinderGeometry(.06, .06, 2.8, 6), M(0x8a8478, { metalness: .4 })); mast.position.set(7.4, 17.4, -1.2); g.add(mast);
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(.38, 10, 8), M(0x1c1c20, { metalness: .55 })); ball.position.set(7.4, 18.7, -1.2); g.add(ball);
+    // Old Kowloon Fire Station — red brick, beside the compound.
+    const fire = new THREE.Mesh(new THREE.BoxGeometry(6.5, 5.2, 5.5), brickMaterial('#8f3a32', '#c9b8a6'));
+    fire.position.set(-10.5, 2.6, 1.5); fire.castShadow = true; g.add(fire);
+    const fireRoof = new THREE.Mesh(new THREE.BoxGeometry(7.1, .55, 6.1), M(0x4a5c48)); fireRoof.position.set(-10.5, 5.4, 1.5); g.add(fireRoof);
+    const lawn = new THREE.Mesh(new THREE.CircleGeometry(5.4, 16), M(0x3f7a48, { roughness: 1 }));
+    lawn.rotation.x = -Math.PI / 2; lawn.position.set(0, .03, 8.6); g.add(lawn);
+    for (let i = 0; i < 3; i++) {
+      const step = new THREE.Mesh(new THREE.BoxGeometry(17.5 - i, .22, 1.8), M(0xc8b99f));
+      step.position.set(0, .12 + i * .16, 6.2 + i * .55); g.add(step);
     }
-    for (let i = 0; i < 3; i++) { const step = new THREE.Mesh(new THREE.BoxGeometry(17 - i, .25, 2), M(0xc8b99f)); step.position.set(0, .12 + i * .16, 6 + i * .65); g.add(step); }
     g.position.set(-48, 0, 84);
     scene.add(g);
-    addCollider(-48, 84, 15, 10);
+    addCollider(-48, 84, 16, 11);
+    addCollider(-58.5, 85.5, 7, 6);
     mark(-48, 84, '#f2ede2', 4);
-    addSign(scene, '1881 Heritage', -48, 6.5, 89.6, 9, '#d9a23c', 0, '#2a2438');
+    addSign(scene, '1881 Heritage', -48, 6.8, 90.2, 10, '#d9a23c', 0, '#2a2438');
   }
 
-  // ============ iSQUARE (-20, 66) — glass tower at Nathan × Peking ============
+  // ============ iSQUARE (-20, 38) — stacked glass boxes, LED sky lobbies on Nathan Rd ============
   {
     const g = new THREE.Group();
-    const tower = new THREE.Mesh(
-      new THREE.BoxGeometry(14, 46, 14),
-      new THREE.MeshStandardMaterial({ map: buildingTexture('#23365c', 0.75), roughness: 0.55, metalness: 0.3 }));
-    // real location: NW corner of Nathan Rd × Peking Rd
-    tower.position.set(0, 23, 0);
-    tower.castShadow = true;
-    g.add(tower);
-    const podium = new THREE.Mesh(new THREE.BoxGeometry(18, 8, 17), M(0x32466e, { metalness: 0.4, roughness: 0.5 }));
-    podium.position.set(0, 4, 0); g.add(podium);
-    const steel = M(0x8aa3ad, { metalness: .75, roughness: .24 });
-    for (let y = 4; y < 45; y += 3.7) { const band = new THREE.Mesh(new THREE.BoxGeometry(14.18, .12, 14.18), steel); band.position.y = y; g.add(band); }
-    for (const x of [-5.2, -2.6, 0, 2.6, 5.2]) {
-      const mullion = new THREE.Mesh(new THREE.BoxGeometry(.11, 44, .16), steel); mullion.position.set(x, 24, 7.08); g.add(mullion);
-    }
-    const crown = new THREE.Mesh(new THREE.BoxGeometry(11, 4, 11), M(0x1a3b54, { metalness: .55, roughness: .22 })); crown.position.y = 48; crown.rotation.y = .12; g.add(crown);
-    const portal = new THREE.Mesh(new THREE.BoxGeometry(7, 4.8, .4), M(0x6ce5e5, { emissive: 0x174f58, emissiveIntensity: 1, metalness: .45 })); portal.position.set(0, 2.7, -8.7); g.add(portal);
-    for (const x of [-6.7, -2.25, 2.25, 6.7]) framedWindow(g, x, 4, -8.58, 3.5, 4.6, Math.PI, 0x7fd5e1);
+    const curtain = ledGlassMaterial('#1b3550');
+    const podium = new THREE.Mesh(new THREE.BoxGeometry(17.5, 10, 16.5), curtain);
+    podium.position.set(0, 5, 0); podium.castShadow = true; g.add(podium);
+    // Offset restaurant / cinema stacks — the real form is a stack of glass volumes, not one slab.
+    const mid = new THREE.Mesh(new THREE.BoxGeometry(13.5, 14, 12.5), curtain);
+    mid.position.set(-1.2, 17.2, .8); mid.castShadow = true; g.add(mid);
+    const top = new THREE.Mesh(new THREE.BoxGeometry(11, 16, 10.5), curtain);
+    top.position.set(1.6, 32.2, -1.1); top.castShadow = true; g.add(top);
+    // Colour-coded sky lobbies (red / gold / cyan) visible through the Nathan Road façade.
+    const lobbyCols = [0xff5a6a, 0xffd35c, 0x5cffe8];
+    lobbyCols.forEach((col, i) => {
+      const band = new THREE.Mesh(new THREE.BoxGeometry(13.7, 1.6, .18),
+        new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: .85 }));
+      band.position.set(-1.2, 12 + i * 5.2, 7.15); g.add(band);
+    });
+    // Express escalators read as a diagonal glass slot on Nathan Road.
+    const esc = new THREE.Mesh(new THREE.BoxGeometry(.7, 11, 1.1),
+      M(0x6ce5e5, { emissive: 0x174f58, emissiveIntensity: 1, metalness: .45 }));
+    esc.position.set(7.2, 8.4, 3.2); esc.rotation.z = -.42; g.add(esc);
+    const crown = new THREE.Mesh(new THREE.BoxGeometry(12.4, 3.2, 11.6),
+      M(0x0d2438, { metalness: .5, roughness: .2, emissive: 0x1a4e66, emissiveIntensity: .9 }));
+    crown.position.set(1.6, 42, -1.1); g.add(crown);
+    const ledScreen = new THREE.Mesh(new THREE.BoxGeometry(10.6, 2.4, .12),
+      new THREE.MeshBasicMaterial({ color: 0x5cffe8 }));
+    ledScreen.position.set(1.6, 42, 4.8); g.add(ledScreen);
+    const portal = new THREE.Mesh(new THREE.BoxGeometry(8, 5.2, .4),
+      M(0x6ce5e5, { emissive: 0x174f58, emissiveIntensity: 1, metalness: .45 }));
+    portal.position.set(0, 2.8, -8.35); g.add(portal);
     g.position.set(-20, 0, 38); scene.add(g);
-    addCollider(-20, 38, 18, 17);
-    mark(-20, 38, '#32466e', 6);
-    addSign(scene, 'iSQUARE 國際廣場', -11, 14, 38, 11, '#5cffe8', Math.PI / 2, '#101a36');
+    addCollider(-20, 38, 17.5, 16.5);
+    mark(-20, 38, '#1b3550', 6);
+    addSign(scene, 'iSQUARE 國際廣場', -10.4, 12, 38, 11, '#5cffe8', Math.PI / 2, '#101a36');
   }
 
-  // ============ Chungking Mansions (19, 72) — five joined blocks ============
+  // ============ Chungking Mansions (19, 72) — five 17-storey blocks on a bazaar podium ============
   {
     const g = new THREE.Group();
     const tex = buildingTexture('#6e5f4e', 0.5);
-    for (let i = 0; i < 3; i++) {
-      const blk = new THREE.Mesh(new THREE.BoxGeometry(6.5, 30, 12), new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 }));
-      blk.position.set(-6.5 + i * 6.5, 15, 0);
-      blk.castShadow = true;
-      g.add(blk);
-    }
-    const podium = new THREE.Mesh(new THREE.BoxGeometry(21, 6, 14), M(0x7d6c58));
-    podium.position.y = 3;
-    g.add(podium);
-    // cluttered little shop signs at street level
-    const signCols = ['#ff5c5c', '#ffd35c', '#7dffb2', '#7db8ff', '#ff8fb6'];
+    const grey = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95 });
+    // Five towers A–E rise from a two-storey arcade, as in the real 1961 plan.
     for (let i = 0; i < 5; i++) {
-      const s = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 1.1),
-        new THREE.MeshBasicMaterial({ color: signCols[i] }));
-      s.position.set(-8 + i * 4, 4.2 + (i % 2), -7.1);
-      g.add(s);
+      const blk = new THREE.Mesh(new THREE.BoxGeometry(4.1, 28, 11.5), grey);
+      blk.position.set(-8.4 + i * 4.2, 17.2, .6); blk.castShadow = true; g.add(blk);
     }
+    const podium = new THREE.Mesh(new THREE.BoxGeometry(22, 6.2, 14.5), M(0x7a6a56, { roughness: .92 }));
+    podium.position.y = 3.1; g.add(podium);
+    const signCols = [0xff5c5c, 0xffd35c, 0x7dffb2, 0x7db8ff, 0xff8fb6, 0xff9a3c];
+    for (let i = 0; i < 6; i++) {
+      const s = new THREE.Mesh(new THREE.BoxGeometry(2.8, 1.15, .12), new THREE.MeshBasicMaterial({ color: signCols[i] }));
+      s.position.set(-9.2 + i * 3.6, 3.6 + (i % 2) * .7, -7.35); g.add(s);
+    }
+    // Blue LED façade bands added in the 2011 cleanup.
+    const led = new THREE.MeshBasicMaterial({ color: 0x4aa8ff });
+    for (const y of [7.4, 14.2, 21]) {
+      const band = new THREE.Mesh(new THREE.BoxGeometry(21.4, .16, .12), led); band.position.set(0, y, -6.2); g.add(band);
+    }
+    const entrance = new THREE.Mesh(new THREE.BoxGeometry(6.5, 3.4, .3), M(0x1a1a1e, { emissive: 0x33220c, emissiveIntensity: .6 }));
+    entrance.position.set(0, 1.8, -7.4); g.add(entrance);
     g.position.set(19, 0, 72);
     g.rotation.y = Math.PI;
     scene.add(g);
-    addCollider(19, 72, 21, 14);
+    addCollider(19, 72, 22, 14.5);
     mark(19, 72, '#6e5f4e', 6);
-    addSign(scene, '重慶大廈 Chungking Mansions', 19, 8.5, 64.6, 14, '#ff8a5c', Math.PI, '#241c14');
+    addSign(scene, '重慶大廈 Chungking Mansions', 19, 8.5, 64.2, 14, '#ff8a5c', Math.PI, '#241c14');
   }
 
-  // ============ K11 MUSEA (42, 114) — curvy bronze waterfront mall ============
+  // ============ K11 MUSEA (42, 114) — limestone manor + living walls + Victoria Dockside ============
   {
     const g = new THREE.Group();
-    const bronze = M(0xa77a4f, { metalness: .48, roughness: .36, emissive: 0x211107, emissiveIntensity: .25 });
-    const paleBronze = M(0xd0a775, { metalness: .62, roughness: .28 });
+    const limestone = limestoneMaterial();
+    const wall = livingWallMaterial();
     const glass = M(0x163342, { metalness: .62, roughness: .14, emissive: 0x142c34, emissiveIntensity: .55 });
-    // A contemporary manor: broad rounded podium, stepped upper floors and roof pavilion.
-    for (const [w, h, d, y, material] of [
-      [28, 8, 22, 4, bronze], [26, 6, 20, 11, glass], [23, 6, 18, 17, bronze], [18, 6, 15, 23, glass], [12, 4, 11, 28, bronze],
-    ]) { const b = roundedBlock(w, h, d, 1.6, material); b.position.y = y; g.add(b); }
-    // Projecting garden terraces and warm horizontal datum lines.
-    for (const [w, d, y] of [[29, 23, 8.1], [27, 21, 14.1], [24, 19, 20.1], [19, 16, 26.1]]) {
-      const terrace = roundedBlock(w, .45, d, 1.7, paleBronze); terrace.position.y = y; g.add(terrace);
+    const cream = M(0xe6dcc8, { roughness: .78 });
+    // Stepped Portuguese-limestone floors (the real exterior is cream stone, not bronze).
+    for (const [w, h, d, y] of [[26, 7.2, 20, 3.6], [22, 5.4, 17, 10], [18, 5, 14.5, 15.2], [13, 4.2, 11, 19.8]]) {
+      const b = roundedBlock(w, h, d, 1.4, limestone); b.position.y = y; g.add(b);
     }
+    // Cascading living walls — K11's most recognisable harbour-front colour.
+    for (const [w, h, y, z] of [[18, 6.4, 6.8, -10.15], [14, 5, 12.4, -8.65], [10, 4.2, 17.4, -7.4]]) {
+      const green = new THREE.Mesh(new THREE.PlaneGeometry(w, h), wall);
+      green.position.set(0, y, z); g.add(green);
+    }
+    for (const side of [-1, 1]) {
+      const sideWall = new THREE.Mesh(new THREE.PlaneGeometry(12, 8), wall);
+      sideWall.rotation.y = side * Math.PI / 2; sideWall.position.set(side * 13.05, 7.2, -2); g.add(sideWall);
+    }
+    // Roof gardens / Nature Discovery Park.
     const gardenM = M(0x3b7656, { roughness: .85 });
-    for (let i = 0; i < 18; i++) {
-      const level = i % 2 ? 20.7 : 26.7, width = i % 2 ? 10.5 : 7.5;
-      const shrub = new THREE.Mesh(new THREE.IcosahedronGeometry(.45 + (i % 3) * .1, 1), gardenM);
-      shrub.position.set(-width + (i % 9) * width / 4, level, i % 2 ? -8.8 : -7.1); g.add(shrub);
+    for (let i = 0; i < 10; i++) {
+      const shrub = new THREE.Mesh(new THREE.IcosahedronGeometry(.42 + (i % 3) * .08, 1), gardenM);
+      shrub.position.set(-6 + (i % 5) * 3, 22.4, -3 + (i % 2) * 3.4); g.add(shrub);
     }
-    // Sculpted bronze facade ribbons curve across the harbour-facing elevation.
-    for (let i = 0; i < 11; i++) {
-      const x = -12.5 + i * 2.5;
-      const curve = new THREE.CatmullRomCurve3([
-        new THREE.Vector3(x, 1, -11.25), new THREE.Vector3(x + Math.sin(i) * .7, 8, -11.65),
-        new THREE.Vector3(x - Math.cos(i) * .8, 15, -10.55), new THREE.Vector3(x * .68, 25.5, -8.15),
-      ]);
-      const fin = new THREE.Mesh(new THREE.TubeGeometry(curve, 24, .15, 7, false), paleBronze); g.add(fin);
-    }
-    const entrance = new THREE.Mesh(new THREE.BoxGeometry(9, 5.8, .45), glass); entrance.position.set(0, 3.2, -11.4); g.add(entrance);
-    const entranceArch = new THREE.Mesh(new THREE.TorusGeometry(4.5, .35, 10, 36, Math.PI), paleBronze); entranceArch.position.set(0, 5.9, -11.68); g.add(entranceArch);
-    for (const x of [-3.2, -1.6, 0, 1.6, 3.2]) { const m = new THREE.Mesh(new THREE.BoxGeometry(.1, 5, .12), paleBronze); m.position.set(x, 3.2, -11.7); g.add(m); }
-    // Roof lantern and art beacon.
-    const lantern = roundedBlock(5, 3, 5, .7, glass); lantern.position.y = 31; g.add(lantern);
-    const beacon = pointLight(0xffbe7a, 7, 28, 1.7); beacon.position.set(0, 29, 0); g.add(beacon);
+    const lantern = roundedBlock(4.6, 2.6, 4.6, .55, glass); lantern.position.y = 23.6; g.add(lantern);
+    const plaza = new THREE.Mesh(new THREE.CylinderGeometry(6.2, 6.8, .45, 20), cream);
+    plaza.position.set(0, .22, -13.4); g.add(plaza);
+    const entrance = new THREE.Mesh(new THREE.BoxGeometry(8.5, 5.2, .4), glass); entrance.position.set(0, 2.9, -10.2); g.add(entrance);
+    const arch = new THREE.Mesh(new THREE.TorusGeometry(4.1, .28, 8, 24, Math.PI), cream);
+    arch.position.set(0, 5.4, -10.4); g.add(arch);
+    const beacon = pointLight(0xffbe7a, 7, 28, 1.7); beacon.position.set(0, 24, 0); g.add(beacon);
     g.position.set(42, 0, 114);
     scene.add(g);
-    addCollider(42, 114, 25, 25);
-    mark(42, 114, '#a8855c', 7);
-    addSign(scene, 'K11 MUSEA', 42, 20, 101, 11, '#ffc88a', Math.PI, '#221608');
+    addCollider(42, 114, 24, 22);
+    mark(42, 114, '#d8c9b0', 7);
+    addSign(scene, 'K11 MUSEA', 42, 16, 100.5, 11, '#ffe7c2', Math.PI, '#2a2418');
     const up = pointLight(0xffb070, 9, 30, 1.7);
     up.position.set(42, 5, 100); scene.add(up);
+
+    // Victoria Dockside / Rosewood tower — the 284 m glass neighbour that completes the skyline.
+    const tower = new THREE.Mesh(new THREE.BoxGeometry(10, 78, 10), ledGlassMaterial('#16344c'));
+    tower.position.set(58, 39, 108); tower.castShadow = true; scene.add(tower);
+    const crown = new THREE.Mesh(new THREE.BoxGeometry(8.2, 4.5, 8.2), M(0x0e2434, { metalness: .55, roughness: .22, emissive: 0x1a4a62, emissiveIntensity: .7 }));
+    crown.position.set(58, 80, 108); scene.add(crown);
+    addCollider(58, 108, 10, 10);
+    mark(58, 108, '#1a3d58', 4);
   }
 
-  // ============ Harbour City (-80, 40) — long mall along Canton Rd ============
+  // ============ Harbour City + Ocean Terminal (-80, 40) — Canton Rd mall + harbour pier ============
   {
     const mallGroup = new THREE.Group();
     const mall = new THREE.Mesh(
-      new THREE.BoxGeometry(20, 14, 78),
+      new THREE.BoxGeometry(18, 13, 78),
       new THREE.MeshStandardMaterial({ map: buildingTexture('#44506e', 0.6), roughness: 0.8 }));
-    mall.position.set(0, 7, 0);
-    mall.castShadow = true;
-    mallGroup.add(mall);
-    // Ocean Terminal's layered retail frontage and glazed harbour decks.
+    mall.position.set(0, 6.5, 0); mall.castShadow = true; mallGroup.add(mall);
     const glass = M(0x21475c, { metalness: .55, roughness: .18, emissive: 0x0f2633, emissiveIntensity: .5 });
+    const cream = M(0xe8e4d8, { roughness: .7 });
+    // Luxury Canton Road shopfronts (east face).
     for (const z of [-30, -12, 8, 28]) {
-      const bay = new THREE.Mesh(new THREE.BoxGeometry(2.2, 8.5, 14), glass); bay.position.set(11.1, 6.2, z); mallGroup.add(bay);
-      for (let y = 3; y < 10; y += 2.2) { const band = new THREE.Mesh(new THREE.BoxGeometry(.18, .12, 14.2), M(0x8daeb9, { metalness: .7 })); band.position.set(12.25, y, z); mallGroup.add(band); }
+      const bay = new THREE.Mesh(new THREE.BoxGeometry(2.4, 8.2, 14), glass); bay.position.set(10.2, 5.8, z); mallGroup.add(bay);
+      const awning = new THREE.Mesh(new THREE.BoxGeometry(2.8, .22, 14.2), cream); awning.position.set(11.1, 10.2, z); mallGroup.add(awning);
     }
-    const roofDeck = new THREE.Mesh(new THREE.BoxGeometry(22, .6, 48), M(0xb5b9b4)); roofDeck.position.set(0, 14.3, 10); mallGroup.add(roofDeck);
-    for (let z = -10; z <= 30; z += 5) {
-      const tree = new THREE.Mesh(new THREE.IcosahedronGeometry(.85, 1), M(0x4b7d5d)); tree.position.set(7.5, 15.5, z); mallGroup.add(tree);
-    }
-    const entrance = new THREE.Mesh(new THREE.BoxGeometry(.5, 6, 11), glass); entrance.position.set(10.3, 3.2, -31); mallGroup.add(entrance);
+    const roofDeck = new THREE.Mesh(new THREE.BoxGeometry(20, .5, 48), M(0xb5b9b4)); roofDeck.position.set(0, 13.4, 10); mallGroup.add(roofDeck);
     mallGroup.position.set(-80, 0, 40); scene.add(mallGroup);
-    addCollider(-80, 40, 20, 78);
+    addCollider(-80, 40, 18, 78);
     mark(-80, 40, '#44506e', 8);
-    addSign(scene, '海港城 Harbour City', -69.6, 10, 40, 16, '#7db8ff', Math.PI / 2, '#141c34');
-    // docked cruise ship at Ocean Terminal (west of mall)
+    addSign(scene, '海港城 Harbour City', -70.2, 10, 40, 16, '#7db8ff', Math.PI / 2, '#141c34');
+
+    // Foster + Partners Ocean Terminal extension: ship-bow terraces reaching into the harbour.
+    const pier = new THREE.Group();
+    const white = M(0xf2f4f6, { roughness: .55, metalness: .18 });
+    const pane = M(0x8ec4d8, { metalness: .45, roughness: .18, emissive: 0x1a3d50, emissiveIntensity: .45 });
+    for (const [w, h, d, y, x] of [[22, 3.2, 28, 1.6, 0], [18, 3, 22, 4.6, -1.2], [14, 2.6, 16, 7.4, -2.4]]) {
+      const deck = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), white);
+      deck.position.set(x, y, 0); pier.add(deck);
+    }
+    const glazing = new THREE.Mesh(new THREE.BoxGeometry(.4, 8.4, 24), pane); glazing.position.set(-11.4, 4.4, 0); pier.add(glazing);
+    const bow = new THREE.Mesh(new THREE.CylinderGeometry(7, 9, 3.2, 3), white);
+    bow.rotation.set(0, Math.PI / 2, Math.PI / 2); bow.position.set(-12, 2.2, 0); pier.add(bow);
+    pier.position.set(-102, 0, 42); scene.add(pier);
+    addCollider(-102, 42, 22, 28);
+
     const ship = new THREE.Group();
-    const hull = new THREE.Mesh(new THREE.BoxGeometry(10, 5, 44), M(0xf5f5f0));
-    hull.position.y = 2.5; ship.add(hull);
-    const decks = new THREE.Mesh(new THREE.BoxGeometry(8, 4, 34), M(0xe8e8e0));
-    decks.position.y = 7; ship.add(decks);
-    const funnel = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.5, 4, 10), M(0xd23a3a));
-    funnel.position.set(0, 11, -6); ship.add(funnel);
-    ship.position.set(-101, 0, 55);
-    scene.add(ship);
-    addCollider(-101, 55, 11, 45);
+    const hull = new THREE.Mesh(new THREE.BoxGeometry(11, 5.2, 46), M(0xf5f5f0)); hull.position.y = 2.6; ship.add(hull);
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(11.1, .45, 46.1), M(0x1d4d8c)); stripe.position.y = 1.6; ship.add(stripe);
+    const decks = new THREE.Mesh(new THREE.BoxGeometry(8.4, 4.2, 34), M(0xe8e8e0)); decks.position.y = 7.2; ship.add(decks);
+    const funnel = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.45, 4.2, 10), M(0xd23a3a)); funnel.position.set(0, 11.4, -6); ship.add(funnel);
+    ship.position.set(-118, 0, 55); scene.add(ship);
+    addCollider(-118, 55, 12, 46);
   }
 
-  // ============ Kowloon Mosque (-19, 22) — white with green domes ============
+  // ============ Kowloon Mosque (-18, -4) — white marble, onion domes, four minarets ============
   {
     const g = new THREE.Group();
-    const white = M(0xf5f2ea), green = M(0x2d8a5f, { roughness: 0.5 });
-    const main = new THREE.Mesh(new THREE.BoxGeometry(11, 7, 11), white);
-    main.position.y = 3.5; main.castShadow = true; g.add(main);
-    const dome = new THREE.Mesh(new THREE.SphereGeometry(3.4, 14, 10, 0, Math.PI * 2, 0, Math.PI / 2), green);
-    dome.position.y = 7; g.add(dome);
-    for (const [mx, mz] of [[-5, -5], [5, -5], [-5, 5], [5, 5]]) {
-      const minaret = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.7, 12, 8), white);
-      minaret.position.set(mx, 6, mz);
-      minaret.castShadow = true;
-      g.add(minaret);
-      const cap = new THREE.Mesh(new THREE.SphereGeometry(0.85, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2), green);
-      cap.position.set(mx, 12, mz);
-      g.add(cap);
+    const white = M(0xf7f4ee, { roughness: .72 });
+    const green = M(0x2a8a5c, { roughness: .42, metalness: .08 });
+    const gold = M(0xe8c15a, { metalness: .65, roughness: .35 });
+    const main = new THREE.Mesh(new THREE.BoxGeometry(12.2, 7.4, 12.2), white);
+    main.position.y = 3.7; main.castShadow = true; g.add(main);
+    const band = new THREE.Mesh(new THREE.BoxGeometry(12.5, .45, 12.5), gold); band.position.y = 6.6; g.add(band);
+    // Full onion dome, not a cut hemisphere — the mosque's skyline signature from Nathan Road.
+    const dome = new THREE.Mesh(new THREE.SphereGeometry(3.6, 16, 12), green);
+    dome.scale.set(1, 1.22, 1); dome.position.y = 10.1; g.add(dome);
+    const finial = new THREE.Mesh(new THREE.CylinderGeometry(.05, .05, 1.6, 5), gold); finial.position.y = 14.6; g.add(finial);
+    const crescent = new THREE.Mesh(new THREE.TorusGeometry(.28, .05, 6, 12, Math.PI * 1.4), gold);
+    crescent.rotation.z = .4; crescent.position.y = 15.5; g.add(crescent);
+    for (const [mx, mz] of [[-5.4, -5.4], [5.4, -5.4], [-5.4, 5.4], [5.4, 5.4]]) {
+      const minaret = new THREE.Mesh(new THREE.CylinderGeometry(.55, .68, 14.5, 10), white);
+      minaret.position.set(mx, 7.25, mz); minaret.castShadow = true; g.add(minaret);
+      const balcony = new THREE.Mesh(new THREE.CylinderGeometry(.95, .95, .22, 10), gold);
+      balcony.position.set(mx, 12.4, mz); g.add(balcony);
+      const cap = new THREE.Mesh(new THREE.SphereGeometry(.95, 10, 8), green);
+      cap.scale.set(1, 1.25, 1); cap.position.set(mx, 15.1, mz); g.add(cap);
+      const tip = new THREE.Mesh(new THREE.SphereGeometry(.12, 6, 6), gold); tip.position.set(mx, 16.5, mz); g.add(tip);
     }
-    // real location: SE corner of Kowloon Park at Nathan Rd × Haiphong Rd
+    const arch = new THREE.Mesh(new THREE.TorusGeometry(1.7, .22, 8, 16, Math.PI), gold);
+    arch.position.set(0, 3.6, 6.2); g.add(arch);
+    const door = new THREE.Mesh(new THREE.BoxGeometry(2.4, 3.4, .2), M(0x1a3d30, { roughness: .4 })); door.position.set(0, 1.8, 6.2); g.add(door);
     g.position.set(-18, 0, -4);
     scene.add(g);
-    addCollider(-18, -4, 12, 12);
+    addCollider(-18, -4, 13, 13);
     mark(-18, -4, '#f5f2ea', 5);
-    addSign(scene, '九龍清真寺 Kowloon Mosque', -18, 8.8, 2.2, 12, '#7dffb2', 0, '#14241c');
+    addSign(scene, '九龍清真寺 Kowloon Mosque', -18, 8.8, 3.2, 12, '#7dffb2', 0, '#14241c');
   }
 
   // ============ St Andrew's Church (16, -22) — red brick, steeple, cross ============
   {
     const g = new THREE.Group();
-    const brick = M(0x9e4a38);
+    const brick = brickMaterial('#9e4a38', '#cbb7a4');
     const nave = new THREE.Mesh(new THREE.BoxGeometry(8, 6, 14), brick);
     nave.position.y = 3; nave.castShadow = true; g.add(nave);
     // pitched roof = 3-sided prism

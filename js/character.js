@@ -73,6 +73,13 @@ export function createGirl() {
   badge.rotation.x = -0.08;
   body.add(badge);
 
+  const pack = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.26, 0.12), blueM);
+  pack.position.set(0, 0.58, -0.2);
+  body.add(pack);
+  const strapL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.28, 0.03), blueM);
+  strapL.position.set(-0.1, 0.62, -0.08); body.add(strapL);
+  const strapR = strapL.clone(); strapR.position.x = 0.1; body.add(strapR);
+
   // ---------------- head ----------------
   const headG = new THREE.Group();
   headG.position.y = 0.80;
@@ -116,17 +123,22 @@ export function createGirl() {
     parts.pigtails.push(tail);
   }
 
-  // eyes — big and friendly
+  // eyes — big and friendly, with a white so they read at game-camera distance
+  parts.eyes = [];
   for (const side of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.024, 8, 8), mat(COL.eye));
-    eye.position.set(side * 0.056, 0.128, 0.144);
-    eye.scale.set(1, 1.2, 0.6);
+    const white = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 8), mat(0xfffdf8));
+    white.position.set(side * 0.056, 0.128, 0.138);
+    white.scale.set(1, 1.25, 0.55);
+    headG.add(white);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(0.018, 8, 8), mat(COL.eye));
+    eye.position.set(side * 0.056, 0.126, 0.152);
+    eye.scale.set(1, 1.15, 0.55);
     headG.add(eye);
+    parts.eyes.push(white, eye);
     const spark = new THREE.Mesh(new THREE.SphereGeometry(0.009, 6, 6),
       new THREE.MeshBasicMaterial({ color: 0xffffff }));
-    spark.position.set(side * 0.052, 0.14, 0.158);
+    spark.position.set(side * 0.05, 0.138, 0.162);
     headG.add(spark);
-    // blush cheeks
     const blush = new THREE.Mesh(new THREE.CircleGeometry(0.022, 8),
       new THREE.MeshBasicMaterial({ color: COL.blush, transparent: true, opacity: 0.55 }));
     blush.position.set(side * 0.092, 0.088, 0.136);
@@ -223,4 +235,12 @@ export function animateGirl(girl, dt, speed) {
   p.head.rotation.x = speed * 0.06;
   p.pigtails[0].rotation.z = 0.35 + Math.sin(t + 0.4) * (0.06 + 0.14 * speed);
   p.pigtails[1].rotation.z = -0.35 - Math.sin(t) * (0.06 + 0.14 * speed);
+
+  if (p.eyes) {
+    const blink = (Math.sin(t * 0.35) > 0.97) ? 0.12 : 1;
+    p.eyes[0].scale.y = blink * 1.25;
+    p.eyes[1].scale.y = blink * 1.15;
+    p.eyes[2].scale.y = blink * 1.25;
+    p.eyes[3].scale.y = blink * 1.15;
+  }
 }

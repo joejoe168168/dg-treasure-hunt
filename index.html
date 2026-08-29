@@ -15,7 +15,7 @@
     <div class="start-card">
       <div class="logo-area">
         <div class="logo-badge">DG</div>
-        <h1 id="game-title">尖沙咀尋寶記</h1>
+        <h1 id="game-title" class="pixel-zh">尖沙咀尋寶記</h1>
         <h2>Tsim Sha Tsui Treasure Hunt</h2>
       </div>
       <p class="intro-text">
@@ -67,6 +67,7 @@
     <div id="hud-top-left">
       <div class="hud-pill" id="hud-name">⭐ —</div>
       <div class="hud-pill" id="hud-score">分數 Score: 0</div>
+      <div class="hud-pill hidden" id="hud-streak">🔥 連擊 0</div>
       <div class="hud-pill" id="hud-chests">寶箱 🎁 0 / 16</div>
       <div class="hud-pill hidden" id="hud-session-time">⏱ 10:00</div>
       <div class="hud-pill small" id="hud-coins">💰 0 &nbsp;⭐ 0</div>
@@ -90,7 +91,15 @@
       <span class="key-cap">E</span> 開寶箱 Open Chest!
     </div>
     <div id="toast" class="hidden" role="status" aria-live="polite"></div>
+    <div id="score-pops" aria-hidden="true"></div>
+    <div id="confetti" aria-hidden="true"></div>
     <div id="screen-reader-announcer" class="sr-only" role="status" aria-live="assertive"></div>
+    <div id="quest-banner" class="hidden" aria-live="polite"></div>
+    <div id="keepsake">
+      <button type="button" id="stamp-btn" title="印章簿 Stamp book" aria-label="打開印章簿 Open stamp book">🎫 0/4</button>
+      <button type="button" id="album-btn" title="相片簿 Photo album" aria-label="打開相片簿 Open photo album">📷 0</button>
+      <div id="album-thumbs"></div>
+    </div>
 
     <!-- mobile controls -->
     <div id="joystick-zone">
@@ -155,11 +164,29 @@
     </div>
   </div>
 
+  <div id="album-screen" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="album-title">
+    <div class="album-card">
+      <h2 id="album-title" class="pixel-zh">📷 尖沙咀影相簿<br><small>TST Photo Album</small></h2>
+      <div id="album-grid"></div>
+      <p id="album-empty" class="album-empty">行去發光嘅影相位，影低鐘樓、星光大道同太空館！</p>
+      <button id="album-close-btn" class="big-btn">返去尋寶 Back</button>
+    </div>
+  </div>
+
+  <div id="stamp-screen" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="stamp-title">
+    <div class="stamp-card">
+      <h2 id="stamp-title" class="pixel-zh">🎫 尋寶印章簿<br><small>Treasure Stamps</small></h2>
+      <div id="stamp-grid"></div>
+      <p id="stamp-hint">完成四個小任務，收集晒印章！</p>
+      <button id="stamp-close-btn" class="big-btn">返去尋寶 Back</button>
+    </div>
+  </div>
+
   <!-- ============ VICTORY ============ -->
   <div id="victory-screen" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="victory-title">
     <div class="result-card victory">
       <div class="victory-stars">🌟🏆🌟</div>
-      <h1 id="victory-title">尋寶完成！Treasure Hunt Complete!</h1>
+      <h1 id="victory-title" class="pixel-zh">尋寶完成！Treasure Hunt Complete!</h1>
       <p id="victory-stats"></p>
       <div class="start-leaderboard">
         <h3>🏆 排行榜 Leaderboard</h3>
